@@ -32,16 +32,3 @@ jobs:
             **/.git*
             **/.git*/**
             **/node_modules/**
-
-      # 3. Deploy Backend API via FTP (to subfolder /api)
-      - name: Deploy Backend to Hostinger
-        uses: SamKirkland/FTP-Deploy-Action@v4.3.4
-        with:
-          server: ${{ secrets.FTP_SERVER }}
-          username: ${{ secrets.FTP_USERNAME }}
-          password: ${{ secrets.FTP_PASSWORD }}
-          local-dir: ./server/
-          server-dir: ./public_html/api/
-          exclude: |
-            **/node_modules/**
-            **/.env

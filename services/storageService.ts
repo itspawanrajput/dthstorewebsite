@@ -98,8 +98,8 @@ export const deleteLead = async (leadId: string): Promise<Lead[]> => {
 
 // --- Product Operations ---
 
-export const getProducts = async (): Promise<Product[]> => {
-    return apiCall(fetch(`${API_URL}/products`), () => getLocal(PRODUCTS_KEY, INITIAL_PRODUCTS as Product[]));
+export const getProducts = (): Product[] => {
+    return getLocal(PRODUCTS_KEY, INITIAL_PRODUCTS as Product[]);
 };
 
 export const saveProduct = async (product: Product): Promise<Product[]> => {
