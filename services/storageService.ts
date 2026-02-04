@@ -20,14 +20,26 @@ const setLocal = (key: string, val: any) => localStorage.setItem(key, JSON.strin
 
 // --- Auth Operations --- 
 const USERS: Record<string, User & { password: string }> = {
+    // Support both username and email-based login
     'admin': { id: 'u1', username: 'admin', password: '123', name: 'Super Admin', role: 'ADMIN' },
-    'staff': { id: 'u2', username: 'staff', password: '123', name: 'Sales Executive', role: 'STAFF' }
+    'staff': { id: 'u2', username: 'staff', password: '123', name: 'Sales Executive', role: 'STAFF' },
+    // Email-based demo accounts
+    'admin@demo.com': { id: 'u1', username: 'admin@demo.com', password: '123', name: 'Super Admin', role: 'ADMIN' },
+    'staff@demo.com': { id: 'u2', username: 'staff@demo.com', password: '123', name: 'Sales Executive', role: 'STAFF' }
 };
 
-export const loginUser = (username: string, password: string): User | null => {
-    const user = USERS[username];
+export const loginUser = (usernameOrEmail: string, password: string): User | null => {
+    // Try direct lookup first
+    let user = USERS[usernameOrEmail];
+
+    // If not found and looks like email, try extracting username
+    if (!user && usernameOrEmail.includes('@')) {
+        const usernameFromEmail = usernameOrEmail.split('@')[0];
+        user = USERS[usernameFromEmail];
+    }
+
     if (user && user.password === password) {
-        const { password, ...safeUser } = user;
+        const { password: _, ...safeUser } = user;
         localStorage.setItem(USER_SESSION_KEY, JSON.stringify(safeUser));
         return safeUser;
     }

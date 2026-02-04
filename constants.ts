@@ -65,8 +65,9 @@ export const PRODUCTS = [
     originalPrice: '₹2,500',
     type: 'DTH',
     features: ['1 Month Pack Free', 'Free Installation', '1 Year Warranty', 'Full HD 1080p'],
-    image: 'https://placehold.co/600x400/222222/FFFFFF/png?text=Tata+Play+HD',
-    color: 'bg-pink-600'
+    image: '/products/tata-play-hd.png',
+    color: 'bg-pink-600',
+    isBestSeller: true
   },
   {
     id: 'p2',
@@ -75,7 +76,7 @@ export const PRODUCTS = [
     originalPrice: '₹2,100',
     type: 'DTH',
     features: ['Free Installation', 'Standard Definition', 'Dolby Digital Sound', 'Record Support'],
-    image: 'https://placehold.co/600x400/DC2626/FFFFFF/png?text=Airtel+Digital+TV',
+    image: '/products/airtel-dtv-hd.png',
     color: 'bg-red-600'
   },
   {
@@ -85,7 +86,7 @@ export const PRODUCTS = [
     originalPrice: '₹1,999',
     type: 'DTH',
     features: ['Lifetime Warranty', '50+ HD Channels', 'Stereo Sound', 'Next Day Installation'],
-    image: 'https://placehold.co/600x400/16A34A/FFFFFF/png?text=Dish+TV+HD',
+    image: '/products/dish-tv-hd.png',
     color: 'bg-green-600'
   },
   {
@@ -95,8 +96,9 @@ export const PRODUCTS = [
     originalPrice: '₹699',
     type: 'Broadband',
     features: ['30 Mbps Speed', 'Free 4K Set Top Box', 'Unlimited Data', 'Free Voice Calls'],
-    image: 'https://placehold.co/600x400/2563EB/FFFFFF/png?text=Jio+Fiber',
-    color: 'bg-blue-600'
+    image: '/products/jio-fiber.png',
+    color: 'bg-blue-600',
+    isBestSeller: true
   },
   {
     id: 'p5',
@@ -105,7 +107,7 @@ export const PRODUCTS = [
     originalPrice: '₹799',
     type: 'Broadband',
     features: ['40 Mbps Speed', 'Xstream Box Included', 'Unlimited Calls', 'WiFi Router Free'],
-    image: 'https://placehold.co/600x400/991B1B/FFFFFF/png?text=Airtel+Xstream',
+    image: '/products/airtel-xstream.png',
     color: 'bg-red-700'
   },
   {
@@ -115,7 +117,7 @@ export const PRODUCTS = [
     originalPrice: '₹2,200',
     type: 'DTH',
     features: ['Gold Pack Free', 'Radio Channels', 'Mosaic Function', 'Active Services'],
-    image: 'https://placehold.co/600x400/9333EA/FFFFFF/png?text=Videocon+d2h',
+    image: '/products/videocon-d2h.png',
     color: 'bg-purple-600'
   }
 ];
@@ -132,25 +134,25 @@ export const DEFAULT_SITE_CONFIG: SiteConfig = {
   ],
   heroSlides: [
     {
-        id: 's1',
-        image: "https://images.unsplash.com/photo-1593784991095-a205069470b6?q=80&w=2070&auto=format&fit=crop",
-        title: "India's #1 DTH Service Provider",
-        subtitle: "Get Tata Play, Airtel, Dish TV with Exclusive Offers.",
-        cta: "Book Free Installation"
+      id: 's1',
+      image: "https://images.unsplash.com/photo-1593784991095-a205069470b6?q=80&w=2070&auto=format&fit=crop",
+      title: "India's #1 DTH Service Provider",
+      subtitle: "Get Tata Play, Airtel, Dish TV with Exclusive Offers.",
+      cta: "Book Free Installation"
     },
     {
-        id: 's2',
-        image: "https://images.unsplash.com/photo-1544197150-b99a580bbcbf?q=80&w=2071&auto=format&fit=crop",
-        title: "Super Fast WiFi Broadband",
-        subtitle: "Fiber connection starting at just ₹399/month.",
-        cta: "Check Availability"
+      id: 's2',
+      image: "https://images.unsplash.com/photo-1544197150-b99a580bbcbf?q=80&w=2071&auto=format&fit=crop",
+      title: "Super Fast WiFi Broadband",
+      subtitle: "Fiber connection starting at just ₹399/month.",
+      cta: "Check Availability"
     },
     {
-        id: 's3',
-        image: "https://images.unsplash.com/photo-1621944626154-7128148b8159?q=80&w=2070&auto=format&fit=crop",
-        title: "Watch 4K & HD Channels",
-        subtitle: "Upgrade your entertainment experience today.",
-        cta: "Get Best Deal"
+      id: 's3',
+      image: "https://images.unsplash.com/photo-1621944626154-7128148b8159?q=80&w=2070&auto=format&fit=crop",
+      title: "Watch 4K & HD Channels",
+      subtitle: "Upgrade your entertainment experience today.",
+      cta: "Get Best Deal"
     }
   ],
   specialOfferImages: {
