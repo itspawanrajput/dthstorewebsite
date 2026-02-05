@@ -43,6 +43,7 @@ export interface Lead {
   notes?: LeadNote[];
   followUpDate?: number;
   orderId?: string;
+  userId?: string; // Link lead to registered user
 }
 
 export interface SalesScriptResponse {
@@ -52,7 +53,7 @@ export interface SalesScriptResponse {
 
 // --- New Types for Product & Auth ---
 
-export type Role = 'ADMIN' | 'STAFF';
+export type Role = 'ADMIN' | 'STAFF' | 'CUSTOMER';
 
 export interface User {
   id: string;

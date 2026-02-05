@@ -133,7 +133,8 @@ export const getCurrentFirebaseUser = (): User | null => {
 // Helper: Map Firebase User to App User
 const mapFirebaseUserToUser = (firebaseUser: FirebaseUser, displayName?: string): User => {
     // Determine role based on admin email list
-    const role: Role = isAdminEmail(firebaseUser.email || '') ? 'ADMIN' : 'STAFF';
+    // TODO: Add logic for STAFF role (e.g. check a separate list or database field)
+    const role: Role = isAdminEmail(firebaseUser.email || '') ? 'ADMIN' : 'CUSTOMER';
 
     return {
         id: firebaseUser.uid,

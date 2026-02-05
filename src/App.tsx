@@ -2,6 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import Navbar from './components/Navbar';
 import AdminDashboard from './components/AdminDashboard';
+import CustomerDashboard from './components/CustomerDashboard';
 import HeroSlider from './components/HeroSlider';
 import ProductPage from './components/ProductPage';
 import SpecialOfferPage from './components/SpecialOfferPage';
@@ -14,7 +15,7 @@ import { ShieldCheck, Check, Star, ArrowRight, MessageCircle, Facebook, Instagra
 
 const App: React.FC = () => {
   // Routing State
-  const [view, setView] = useState<'home' | 'admin' | 'products' | 'offers'>('home');
+  const [view, setView] = useState<'home' | 'admin' | 'account' | 'products' | 'offers'>('home');
   // Auth State
   const [user, setUser] = useState<User | null>(null);
   const [showLogin, setShowLogin] = useState(false);
@@ -35,6 +36,11 @@ const App: React.FC = () => {
   }, [view]); // Refresh config when view changes (simple way to update after admin save)
 
   const handleLeadSubmit = async (lead: Lead) => {
+    // If user is logged in, attach their ID to the lead
+    if (user && user.id) {
+      lead.userId = user.id;
+    }
+
     saveLead(lead);
     try {
       await sendLeadNotification(lead);
@@ -55,7 +61,12 @@ const App: React.FC = () => {
 
   const handleLoginSuccess = (loggedInUser: User) => {
     setUser(loggedInUser);
-    setView('admin'); // Redirect to admin immediately on login
+    // Redirect based on role
+    if (loggedInUser.role === 'ADMIN') {
+      setView('admin');
+    } else {
+      setView('account');
+    }
     setShowLogin(false);
   };
 
@@ -72,7 +83,7 @@ const App: React.FC = () => {
         config={siteConfig}
         onLoginClick={() => setShowLogin(true)}
         onLogoutClick={handleLogout}
-        onNavigate={(page) => setView(page as 'home' | 'admin' | 'products' | 'offers')}
+        onNavigate={(page) => setView(page as any)}
       />
 
       {showLogin && (
@@ -83,8 +94,10 @@ const App: React.FC = () => {
       )}
 
       <main className="flex-grow">
-        {view === 'admin' && user ? (
+        {view === 'admin' && user?.role === 'ADMIN' ? (
           <AdminDashboard user={user} />
+        ) : view === 'account' && user ? (
+          <CustomerDashboard user={user} onLogout={handleLogout} />
         ) : view === 'products' ? (
           <ProductPage onBookNow={handleBookNowScroll} />
         ) : view === 'offers' ? (

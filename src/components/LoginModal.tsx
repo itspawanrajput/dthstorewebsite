@@ -272,7 +272,6 @@ const LoginModal: React.FC<LoginModalProps> = ({ onClose, onLoginSuccess }) => {
                 </button>
             </form>
 
-            {/* Public signup removed for CMS security
             {firebaseReady && (
                 <div className="text-center">
                     <span className="text-sm text-gray-500">Don't have an account? </span>
@@ -285,7 +284,6 @@ const LoginModal: React.FC<LoginModalProps> = ({ onClose, onLoginSuccess }) => {
                     </button>
                 </div>
             )}
-            */}
 
             {/* Demo credentials notice - only show if Firebase is NOT configured */}
             {!firebaseReady && (

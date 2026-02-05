@@ -138,6 +138,12 @@ export const getLeads = async (): Promise<Lead[]> => {
     return getLocal(LEADS_KEY, INITIAL_LEADS);
 };
 
+export const getUserLeads = async (userId: string): Promise<Lead[]> => {
+    // For now, filtering local leads. In production with Firestore, this would be a query.
+    const allLeads = await getLeads();
+    return allLeads.filter(lead => lead.userId === userId);
+};
+
 export const saveLead = async (lead: Lead): Promise<Lead> => {
     const remote = getRemote();
     if (remote) {
