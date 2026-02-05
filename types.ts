@@ -122,10 +122,12 @@ export interface NotificationConfig {
   telegramBotToken: string;
   telegramChatId: string;
 
-  // WhatsApp (CallMeBot)
+  // WhatsApp - Self-hosted API (whatsapp-web.js)
   whatsappEnabled: boolean;
-  whatsappNumber: string;
-  whatsappApiKey: string;
+  whatsappApiUrl: string;        // e.g., http://your-ec2-ip:3000
+  whatsappApiKey: string;        // API key for authentication
+  whatsappSessionId: string;     // Session name, e.g., "DTHSTORE"
+  whatsappAdminNumber: string;   // Your WhatsApp number with country code (919311252564)
 
   // Browser notifications
   browserNotificationsEnabled: boolean;

@@ -3,7 +3,7 @@ import { NotificationConfig } from '../../types';
 import { getNotificationConfig, saveNotificationConfig } from '../../services/storageService';
 import {
     Bell, Mail, MessageCircle, Send, Save, CheckCircle, AlertCircle,
-    ExternalLink, Eye, EyeOff, Info, TestTube
+    ExternalLink, Eye, EyeOff, Info, TestTube, Server, QrCode
 } from 'lucide-react';
 
 const NotificationSettings: React.FC = () => {
@@ -15,8 +15,10 @@ const NotificationSettings: React.FC = () => {
         telegramBotToken: '',
         telegramChatId: '',
         whatsappEnabled: false,
-        whatsappNumber: '',
+        whatsappApiUrl: '',
         whatsappApiKey: '',
+        whatsappSessionId: 'DTHSTORE',
+        whatsappAdminNumber: '',
         browserNotificationsEnabled: true
     });
 
@@ -24,6 +26,7 @@ const NotificationSettings: React.FC = () => {
     const [showTokens, setShowTokens] = useState<Record<string, boolean>>({});
     const [testing, setTesting] = useState<string | null>(null);
     const [testResult, setTestResult] = useState<{ channel: string; success: boolean; message: string } | null>(null);
+    const [whatsappStatus, setWhatsappStatus] = useState<'unknown' | 'connected' | 'disconnected' | 'checking'>('unknown');
 
     useEffect(() => {
         const savedConfig = getNotificationConfig();
@@ -40,18 +43,30 @@ const NotificationSettings: React.FC = () => {
         setShowTokens(prev => ({ ...prev, [field]: !prev[field] }));
     };
 
+    const checkWhatsAppStatus = async () => {
+        if (!config.whatsappApiUrl) return;
+
+        setWhatsappStatus('checking');
+        try {
+            const headers: Record<string, string> = {};
+            if (config.whatsappApiKey) {
+                headers['x-api-key'] = config.whatsappApiKey;
+            }
+
+            const response = await fetch(
+                `${config.whatsappApiUrl}/session/status/${config.whatsappSessionId}`,
+                { headers }
+            );
+            const data = await response.json();
+            setWhatsappStatus(data.state === 'CONNECTED' ? 'connected' : 'disconnected');
+        } catch {
+            setWhatsappStatus('disconnected');
+        }
+    };
+
     const testNotification = async (channel: 'email' | 'telegram' | 'whatsapp') => {
         setTesting(channel);
         setTestResult(null);
-
-        const testLead = {
-            name: 'Test User',
-            mobile: '9999999999',
-            location: 'Test City',
-            serviceType: 'DTH Connection',
-            operator: 'Tata Play',
-            source: 'Test'
-        };
 
         try {
             if (channel === 'email' && config.emailEnabled && config.web3formsKey) {
@@ -91,16 +106,30 @@ const NotificationSettings: React.FC = () => {
                     success: data.ok,
                     message: data.ok ? 'Telegram message sent!' : data.description
                 });
-            } else if (channel === 'whatsapp' && config.whatsappEnabled && config.whatsappNumber && config.whatsappApiKey) {
-                const message = encodeURIComponent('🔔 Test Notification - Your WhatsApp integration is working! From DTH Store CMS');
+            } else if (channel === 'whatsapp' && config.whatsappEnabled && config.whatsappApiUrl && config.whatsappAdminNumber) {
+                const headers: Record<string, string> = {
+                    'Content-Type': 'application/json'
+                };
+                if (config.whatsappApiKey) {
+                    headers['x-api-key'] = config.whatsappApiKey;
+                }
+
                 const response = await fetch(
-                    `https://api.callmebot.com/whatsapp.php?phone=${config.whatsappNumber}&text=${message}&apikey=${config.whatsappApiKey}`,
-                    { method: 'GET' }
+                    `${config.whatsappApiUrl}/client/sendMessage/${config.whatsappSessionId}`,
+                    {
+                        method: 'POST',
+                        headers,
+                        body: JSON.stringify({
+                            chatId: `${config.whatsappAdminNumber}@c.us`,
+                            message: '🔔 *Test Notification*\n\nYour WhatsApp integration is working!\n\n_From DTH Store CMS_'
+                        })
+                    }
                 );
+                const data = await response.json();
                 setTestResult({
                     channel,
                     success: response.ok,
-                    message: response.ok ? 'WhatsApp message sent!' : 'Failed to send'
+                    message: response.ok ? 'WhatsApp message sent!' : (data.message || 'Failed to send')
                 });
             } else {
                 setTestResult({
@@ -344,7 +373,7 @@ const NotificationSettings: React.FC = () => {
                 )}
             </div>
 
-            {/* WhatsApp Section */}
+            {/* WhatsApp Section - Self-Hosted API */}
             <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
                 <div className="p-6 border-b border-gray-100">
                     <div className="flex items-center justify-between">
@@ -354,77 +383,131 @@ const NotificationSettings: React.FC = () => {
                             </div>
                             <div>
                                 <h3 className="font-bold text-gray-900">WhatsApp Notifications</h3>
-                                <p className="text-sm text-gray-500">Receive alerts on WhatsApp via CallMeBot</p>
+                                <p className="text-sm text-gray-500">Self-hosted WhatsApp API (whatsapp-web.js)</p>
                             </div>
                         </div>
-                        <label className="relative inline-flex items-center cursor-pointer">
-                            <input
-                                type="checkbox"
-                                checked={config.whatsappEnabled}
-                                onChange={(e) => setConfig({ ...config, whatsappEnabled: e.target.checked })}
-                                className="sr-only peer"
-                            />
-                            <div className="w-14 h-7 bg-gray-200 peer-focus:ring-4 peer-focus:ring-green-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-0.5 after:left-[4px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-6 after:w-6 after:transition-all peer-checked:bg-green-500"></div>
-                        </label>
+                        <div className="flex items-center space-x-3">
+                            {whatsappStatus !== 'unknown' && (
+                                <span className={`px-3 py-1 rounded-full text-xs font-medium ${whatsappStatus === 'connected' ? 'bg-green-100 text-green-800' :
+                                        whatsappStatus === 'checking' ? 'bg-yellow-100 text-yellow-800' :
+                                            'bg-red-100 text-red-800'
+                                    }`}>
+                                    {whatsappStatus === 'connected' ? '● Connected' :
+                                        whatsappStatus === 'checking' ? '● Checking...' :
+                                            '● Disconnected'}
+                                </span>
+                            )}
+                            <label className="relative inline-flex items-center cursor-pointer">
+                                <input
+                                    type="checkbox"
+                                    checked={config.whatsappEnabled}
+                                    onChange={(e) => setConfig({ ...config, whatsappEnabled: e.target.checked })}
+                                    className="sr-only peer"
+                                />
+                                <div className="w-14 h-7 bg-gray-200 peer-focus:ring-4 peer-focus:ring-green-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-0.5 after:left-[4px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-6 after:w-6 after:transition-all peer-checked:bg-green-500"></div>
+                            </label>
+                        </div>
                     </div>
                 </div>
 
                 {config.whatsappEnabled && (
                     <div className="p-6 bg-gray-50 space-y-4">
                         <div className="bg-green-50 border border-green-200 rounded-lg p-4 flex items-start">
-                            <Info size={20} className="text-green-600 mr-3 mt-0.5 flex-shrink-0" />
+                            <Server size={20} className="text-green-600 mr-3 mt-0.5 flex-shrink-0" />
                             <div className="text-sm text-green-800">
-                                <p className="font-medium">How to setup CallMeBot:</p>
-                                <ol className="mt-2 list-decimal list-inside space-y-1">
-                                    <li>Save <strong>+34 694 31 77 27</strong> to your contacts</li>
-                                    <li>Send this WhatsApp message: <code className="bg-green-100 px-1 rounded">I allow callmebot to send me messages</code></li>
-                                    <li>Wait for API Key in reply</li>
-                                </ol>
+                                <p className="font-medium">Self-hosted WhatsApp API:</p>
+                                <p className="mt-1">Your WhatsApp API is running on AWS EC2. Enter the server details below.</p>
                                 <a
-                                    href="https://www.callmebot.com/blog/free-api-whatsapp-messages/"
+                                    href={config.whatsappApiUrl ? `${config.whatsappApiUrl}/api-docs` : '#'}
                                     target="_blank"
                                     className="inline-flex items-center mt-2 underline"
                                 >
-                                    Full Instructions <ExternalLink size={14} className="ml-1" />
+                                    View API Documentation <ExternalLink size={14} className="ml-1" />
                                 </a>
                             </div>
                         </div>
-                        <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-1">Your WhatsApp Number (with country code)</label>
-                            <input
-                                type="text"
-                                value={config.whatsappNumber}
-                                onChange={(e) => setConfig({ ...config, whatsappNumber: e.target.value })}
-                                placeholder="919311252564"
-                                className="w-full p-3 border rounded-lg focus:ring-2 focus:ring-green-500"
-                            />
-                        </div>
-                        <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-1">CallMeBot API Key</label>
-                            <div className="relative">
+
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-1">API Server URL</label>
                                 <input
-                                    type={showTokens.whatsapp ? 'text' : 'password'}
-                                    value={config.whatsappApiKey}
-                                    onChange={(e) => setConfig({ ...config, whatsappApiKey: e.target.value })}
-                                    placeholder="Your API key"
-                                    className="w-full p-3 pr-12 border rounded-lg focus:ring-2 focus:ring-green-500"
+                                    type="text"
+                                    value={config.whatsappApiUrl}
+                                    onChange={(e) => setConfig({ ...config, whatsappApiUrl: e.target.value })}
+                                    placeholder="http://ec2-xx-xx-xx-xx.compute-1.amazonaws.com:3000"
+                                    className="w-full p-3 border rounded-lg focus:ring-2 focus:ring-green-500"
                                 />
-                                <button
-                                    onClick={() => toggleShowToken('whatsapp')}
-                                    className="absolute right-3 top-3 text-gray-400 hover:text-gray-600"
-                                >
-                                    {showTokens.whatsapp ? <EyeOff size={20} /> : <Eye size={20} />}
-                                </button>
+                            </div>
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-1">API Key (optional)</label>
+                                <div className="relative">
+                                    <input
+                                        type={showTokens.whatsapp ? 'text' : 'password'}
+                                        value={config.whatsappApiKey}
+                                        onChange={(e) => setConfig({ ...config, whatsappApiKey: e.target.value })}
+                                        placeholder="Your API key"
+                                        className="w-full p-3 pr-12 border rounded-lg focus:ring-2 focus:ring-green-500"
+                                    />
+                                    <button
+                                        onClick={() => toggleShowToken('whatsapp')}
+                                        className="absolute right-3 top-3 text-gray-400 hover:text-gray-600"
+                                    >
+                                        {showTokens.whatsapp ? <EyeOff size={20} /> : <Eye size={20} />}
+                                    </button>
+                                </div>
                             </div>
                         </div>
-                        <button
-                            onClick={() => testNotification('whatsapp')}
-                            disabled={testing === 'whatsapp' || !config.whatsappNumber || !config.whatsappApiKey}
-                            className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50 flex items-center"
-                        >
-                            <TestTube size={16} className="mr-2" />
-                            {testing === 'whatsapp' ? 'Sending...' : 'Test WhatsApp'}
-                        </button>
+
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-1">Session ID</label>
+                                <input
+                                    type="text"
+                                    value={config.whatsappSessionId}
+                                    onChange={(e) => setConfig({ ...config, whatsappSessionId: e.target.value })}
+                                    placeholder="DTHSTORE"
+                                    className="w-full p-3 border rounded-lg focus:ring-2 focus:ring-green-500"
+                                />
+                            </div>
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-1">Your WhatsApp Number</label>
+                                <input
+                                    type="text"
+                                    value={config.whatsappAdminNumber}
+                                    onChange={(e) => setConfig({ ...config, whatsappAdminNumber: e.target.value })}
+                                    placeholder="919311252564"
+                                    className="w-full p-3 border rounded-lg focus:ring-2 focus:ring-green-500"
+                                />
+                                <p className="text-xs text-gray-500 mt-1">Include country code without + (e.g., 91 for India)</p>
+                            </div>
+                        </div>
+
+                        <div className="flex flex-wrap gap-3">
+                            <button
+                                onClick={checkWhatsAppStatus}
+                                disabled={!config.whatsappApiUrl}
+                                className="px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 disabled:opacity-50 flex items-center"
+                            >
+                                <Server size={16} className="mr-2" />
+                                Check Status
+                            </button>
+                            <a
+                                href={config.whatsappApiUrl ? `${config.whatsappApiUrl}/session/qr/${config.whatsappSessionId}/image` : '#'}
+                                target="_blank"
+                                className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 flex items-center"
+                            >
+                                <QrCode size={16} className="mr-2" />
+                                View QR Code
+                            </a>
+                            <button
+                                onClick={() => testNotification('whatsapp')}
+                                disabled={testing === 'whatsapp' || !config.whatsappApiUrl || !config.whatsappAdminNumber}
+                                className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50 flex items-center"
+                            >
+                                <TestTube size={16} className="mr-2" />
+                                {testing === 'whatsapp' ? 'Sending...' : 'Test WhatsApp'}
+                            </button>
+                        </div>
                     </div>
                 )}
             </div>

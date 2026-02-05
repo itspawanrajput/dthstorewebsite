@@ -19,8 +19,10 @@ const DEFAULT_NOTIFICATION_CONFIG: NotificationConfig = {
     telegramBotToken: '',
     telegramChatId: '',
     whatsappEnabled: false,
-    whatsappNumber: '',
+    whatsappApiUrl: '',
     whatsappApiKey: '',
+    whatsappSessionId: 'DTHSTORE',
+    whatsappAdminNumber: '',
     browserNotificationsEnabled: true
 };
 

@@ -100,36 +100,57 @@ const sendTelegramNotification = async (lead: Lead, config: NotificationConfig):
 };
 
 /**
- * Send WhatsApp notification via CallMeBot
+ * Send WhatsApp notification via self-hosted whatsapp-web.js API
  */
 const sendWhatsAppNotification = async (lead: Lead, config: NotificationConfig): Promise<boolean> => {
-  if (!config.whatsappEnabled || !config.whatsappNumber || !config.whatsappApiKey) {
+  if (!config.whatsappEnabled || !config.whatsappApiUrl || !config.whatsappAdminNumber) {
     console.log('[WhatsApp] Not enabled or not configured');
     return false;
   }
 
-  const message = encodeURIComponent(`
-🔔 *New Lead - DTH Store*
+  const message = `🔔 *New Lead - DTH Store*
 
-👤 ${lead.name}
-📱 ${lead.mobile}
-🏠 ${lead.location}
-📺 ${lead.serviceType} - ${lead.operator}
-🌐 ${lead.source}
-⏰ ${new Date().toLocaleString('en-IN')}
-`);
+👤 *Name:* ${lead.name}
+📱 *Mobile:* ${lead.mobile}
+🏠 *Location:* ${lead.location}
+📺 *Service:* ${lead.serviceType} - ${lead.operator}
+🌐 *Source:* ${lead.source}
+⏰ *Time:* ${new Date().toLocaleString('en-IN')}
+
+📞 Call: tel:+91${lead.mobile}
+💬 WhatsApp: https://wa.me/91${lead.mobile}`;
+
+  // Format: number@c.us (e.g., 919311252564@c.us)
+  const chatId = `${config.whatsappAdminNumber}@c.us`;
 
   try {
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json'
+    };
+
+    // Add API key if configured
+    if (config.whatsappApiKey) {
+      headers['x-api-key'] = config.whatsappApiKey;
+    }
+
     const response = await fetch(
-      `https://api.callmebot.com/whatsapp.php?phone=${config.whatsappNumber}&text=${message}&apikey=${config.whatsappApiKey}`,
-      { method: 'GET' }
+      `${config.whatsappApiUrl}/client/sendMessage/${config.whatsappSessionId}`,
+      {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({
+          chatId,
+          message
+        })
+      }
     );
 
+    const data = await response.json();
     if (response.ok) {
       console.log('✅ [WhatsApp] Notification sent successfully');
       return true;
     }
-    throw new Error('WhatsApp send failed');
+    throw new Error(data.message || 'WhatsApp send failed');
   } catch (error) {
     console.error('❌ [WhatsApp] Failed to send:', error);
     return false;
