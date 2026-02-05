@@ -1,3 +1,25 @@
+# ===========================================
+# DTH Store Website - Git Ignore
+# ===========================================
+
+# Dependencies
+node_modules
+server/node_modules
+whatsapp-api/node_modules
+
+# Build outputs
+# Note: dist is NOT ignored for Hostinger Git deployment
+# dist
+dist-ssr
+*.local
+
+# Environment files (CRITICAL - contains secrets)
+.env
+.env.local
+.env.*.local
+server/.env
+whatsapp-api/.env
+
 # Logs
 logs
 *.log
@@ -7,15 +29,10 @@ yarn-error.log*
 pnpm-debug.log*
 lerna-debug.log*
 
-node_modules
-# dist - Uncommented for Hostinger Git deployment
-# dist
-dist-ssr
-*.local
-
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json
+!.vscode/settings.json
 .idea
 .DS_Store
 *.suo
@@ -23,5 +40,39 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+*.swp
+*~
 
+# OS files
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# Testing
+coverage
+.nyc_output
+
+# Cache
+.cache
+.parcel-cache
+.eslintcache
+
+# Archive/backup
 _archive
+*.bak
+*.backup
+
+# WhatsApp API specific
+whatsapp-api/sessions
+whatsapp-api/data
+whatsapp-api/.wwebjs_auth
+whatsapp-api/.wwebjs_cache
+
+# Debug files
+debug_*.cjs
+*.debug.js
+
+# Temporary files
+tmp
+temp
+*.tmp

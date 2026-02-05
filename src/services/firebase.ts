@@ -1,21 +1,22 @@
 /**
  * Firebase Configuration
  * 
- * IMPORTANT: Replace these placeholder values with your actual Firebase project credentials.
+ * Configuration is loaded from environment variables.
+ * Set these in your .env file (see .env.example for reference).
  * 
  * To set up Firebase:
  * 1. Go to https://console.firebase.google.com/
  * 2. Create a new project or select an existing one
  * 3. Go to Project Settings > General > Your Apps
  * 4. Add a Web App if you haven't already
- * 5. Copy the firebaseConfig object and paste it below
+ * 5. Copy the values to your .env file
  * 6. Enable Authentication:
  *    - Go to Authentication > Sign-in method
  *    - Enable "Email/Password" provider
  *    - Enable "Google" provider
  */
 
-import { initializeApp } from 'firebase/app';
+import { initializeApp, FirebaseApp } from 'firebase/app';
 import {
     getAuth,
     signInWithEmailAndPassword,
@@ -25,29 +26,59 @@ import {
     sendPasswordResetEmail,
     signOut,
     onAuthStateChanged,
-    User as FirebaseUser
+    User as FirebaseUser,
+    Auth
 } from 'firebase/auth';
 
-// Firebase configuration - REPLACE WITH YOUR OWN CREDENTIALS
+// Firebase configuration from environment variables
 const firebaseConfig = {
-    apiKey: "YOUR_API_KEY",
-    authDomain: "YOUR_PROJECT_ID.firebaseapp.com",
-    projectId: "YOUR_PROJECT_ID",
-    storageBucket: "YOUR_PROJECT_ID.appspot.com",
-    messagingSenderId: "YOUR_MESSAGING_SENDER_ID",
-    appId: "YOUR_APP_ID"
+    apiKey: import.meta.env.VITE_FIREBASE_API_KEY || '',
+    authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN || '',
+    projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID || '',
+    storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET || '',
+    messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID || '',
+    appId: import.meta.env.VITE_FIREBASE_APP_ID || ''
 };
 
-// Initialize Firebase
-const app = initializeApp(firebaseConfig);
-export const auth = getAuth(app);
-export const googleProvider = new GoogleAuthProvider();
+// Check if Firebase is properly configured
+export const isFirebaseConfigured = (): boolean => {
+    return !!(
+        firebaseConfig.apiKey &&
+        firebaseConfig.authDomain &&
+        firebaseConfig.projectId &&
+        firebaseConfig.apiKey !== 'your_firebase_api_key' &&
+        !firebaseConfig.apiKey.includes('YOUR_')
+    );
+};
 
-// Configure Google provider
-googleProvider.setCustomParameters({
-    prompt: 'select_account'
-});
+// Initialize Firebase only if configured
+let app: FirebaseApp | null = null;
+let auth: Auth | null = null;
+let googleProvider: GoogleAuthProvider | null = null;
 
+if (isFirebaseConfigured()) {
+    try {
+        app = initializeApp(firebaseConfig);
+        auth = getAuth(app);
+        googleProvider = new GoogleAuthProvider();
+
+        // Configure Google provider
+        googleProvider.setCustomParameters({
+            prompt: 'select_account'
+        });
+
+        console.log('✅ Firebase initialized successfully');
+    } catch (error) {
+        console.warn('⚠️ Firebase initialization failed:', error);
+    }
+} else {
+    console.log('ℹ️ Firebase not configured. Using demo mode for authentication.');
+}
+
+// Export auth instance (may be null if not configured)
+export { auth, googleProvider };
+
+// Re-export Firebase auth functions
 export {
     signInWithEmailAndPassword,
     createUserWithEmailAndPassword,

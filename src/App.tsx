@@ -72,7 +72,7 @@ const App: React.FC = () => {
         config={siteConfig}
         onLoginClick={() => setShowLogin(true)}
         onLogoutClick={handleLogout}
-        onNavigate={(page) => setView(page as any)}
+        onNavigate={(page) => setView(page as 'home' | 'admin' | 'products' | 'offers')}
       />
 
       {showLogin && (

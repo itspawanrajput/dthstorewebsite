@@ -1,0 +1,84 @@
+# ===========================================
+# DTH Store - Apache Configuration for SPA
+# ===========================================
+# This file enables client-side routing on Hostinger
+# Place this in the root of your public_html folder
+
+# Enable RewriteEngine
+<IfModule mod_rewrite.c>
+    RewriteEngine On
+    RewriteBase /
+    
+    # If the requested resource exists as a file or directory, serve it
+    RewriteCond %{REQUEST_FILENAME} !-f
+    RewriteCond %{REQUEST_FILENAME} !-d
+    
+    # Otherwise, redirect all requests to index.html (SPA routing)
+    RewriteRule ^(.*)$ /index.html [L,QSA]
+</IfModule>
+
+# ===========================================
+# Security Headers
+# ===========================================
+<IfModule mod_headers.c>
+    # Prevent clickjacking
+    Header set X-Frame-Options "SAMEORIGIN"
+    
+    # Prevent MIME type sniffing
+    Header set X-Content-Type-Options "nosniff"
+    
+    # Enable XSS protection
+    Header set X-XSS-Protection "1; mode=block"
+    
+    # Referrer Policy
+    Header set Referrer-Policy "strict-origin-when-cross-origin"
+    
+    # Content Security Policy (adjust as needed)
+    # Header set Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: https:; connect-src 'self' https://api.web3forms.com https://api.telegram.org https://*.firebaseio.com https://*.googleapis.com"
+</IfModule>
+
+# ===========================================
+# Compression (GZIP)
+# ===========================================
+<IfModule mod_deflate.c>
+    AddOutputFilterByType DEFLATE text/html
+    AddOutputFilterByType DEFLATE text/css
+    AddOutputFilterByType DEFLATE text/javascript
+    AddOutputFilterByType DEFLATE application/javascript
+    AddOutputFilterByType DEFLATE application/json
+    AddOutputFilterByType DEFLATE image/svg+xml
+</IfModule>
+
+# ===========================================
+# Caching
+# ===========================================
+<IfModule mod_expires.c>
+    ExpiresActive On
+    
+    # HTML - no cache (always get latest)
+    ExpiresByType text/html "access plus 0 seconds"
+    
+    # CSS and JS - cache for 1 year (Vite adds hash to filenames)
+    ExpiresByType text/css "access plus 1 year"
+    ExpiresByType application/javascript "access plus 1 year"
+    
+    # Images - cache for 1 month
+    ExpiresByType image/jpeg "access plus 1 month"
+    ExpiresByType image/png "access plus 1 month"
+    ExpiresByType image/gif "access plus 1 month"
+    ExpiresByType image/webp "access plus 1 month"
+    ExpiresByType image/svg+xml "access plus 1 month"
+    ExpiresByType image/x-icon "access plus 1 month"
+    
+    # Fonts - cache for 1 year
+    ExpiresByType font/woff2 "access plus 1 year"
+    ExpiresByType font/woff "access plus 1 year"
+    ExpiresByType font/ttf "access plus 1 year"
+</IfModule>
+
+# ===========================================
+# Error Pages (Optional)
+# ===========================================
+# Uncomment if you have custom error pages
+# ErrorDocument 404 /index.html
+# ErrorDocument 500 /error.html

@@ -1,6 +1,7 @@
 /**
  * Authentication Service
  * Handles Firebase Authentication with Email/Password and Google Sign-In
+ * Falls back to demo mode when Firebase is not configured
  */
 
 import {
@@ -12,14 +13,31 @@ import {
     sendPasswordResetEmail,
     signOut,
     onAuthStateChanged,
-    FirebaseUser
+    FirebaseUser,
+    isFirebaseConfigured
 } from './firebase';
 import { User, Role } from '../types';
 
 const USER_SESSION_KEY = 'dthstore_user_session';
 
+// Get admin emails from environment or use defaults
+const getAdminEmails = (): string[] => {
+    const envEmails = import.meta.env.VITE_ADMIN_EMAILS || '';
+    const emails = envEmails.split(',').map((e: string) => e.trim().toLowerCase()).filter(Boolean);
+
+    // Default admin emails if none configured
+    if (emails.length === 0) {
+        return ['admin@dthstore.shop'];
+    }
+    return emails;
+};
+
 // Email/Password Login
 export const loginWithEmail = async (email: string, password: string): Promise<User> => {
+    if (!isFirebaseConfigured() || !auth) {
+        throw new Error('Firebase not configured. Use demo login.');
+    }
+
     try {
         const result = await signInWithEmailAndPassword(auth, email, password);
         const user = mapFirebaseUserToUser(result.user);
@@ -32,6 +50,10 @@ export const loginWithEmail = async (email: string, password: string): Promise<U
 
 // Create new account with Email/Password
 export const signUpWithEmail = async (email: string, password: string, name: string): Promise<User> => {
+    if (!isFirebaseConfigured() || !auth) {
+        throw new Error('Firebase not configured. Sign up is disabled in demo mode.');
+    }
+
     try {
         const result = await createUserWithEmailAndPassword(auth, email, password);
         const user = mapFirebaseUserToUser(result.user, name);
@@ -44,6 +66,10 @@ export const signUpWithEmail = async (email: string, password: string, name: str
 
 // Google Sign-In
 export const loginWithGoogle = async (): Promise<User> => {
+    if (!isFirebaseConfigured() || !auth || !googleProvider) {
+        throw new Error('Firebase not configured. Google sign-in is disabled in demo mode.');
+    }
+
     try {
         const result = await signInWithPopup(auth, googleProvider);
         const user = mapFirebaseUserToUser(result.user);
@@ -56,6 +82,10 @@ export const loginWithGoogle = async (): Promise<User> => {
 
 // Send Password Reset Email
 export const resetPassword = async (email: string): Promise<void> => {
+    if (!isFirebaseConfigured() || !auth) {
+        throw new Error('Firebase not configured. Password reset is disabled in demo mode.');
+    }
+
     try {
         await sendPasswordResetEmail(auth, email);
     } catch (error: any) {
@@ -66,7 +96,9 @@ export const resetPassword = async (email: string): Promise<void> => {
 // Logout
 export const logoutFirebase = async (): Promise<void> => {
     try {
-        await signOut(auth);
+        if (auth) {
+            await signOut(auth);
+        }
         localStorage.removeItem(USER_SESSION_KEY);
     } catch (error: any) {
         throw new Error('Failed to logout. Please try again.');
@@ -75,6 +107,11 @@ export const logoutFirebase = async (): Promise<void> => {
 
 // Auth State Observer
 export const subscribeToAuthState = (callback: (user: User | null) => void): (() => void) => {
+    if (!auth) {
+        // Return a no-op unsubscribe function if auth is not available
+        return () => { };
+    }
+
     return onAuthStateChanged(auth, (firebaseUser) => {
         if (firebaseUser) {
             const user = mapFirebaseUserToUser(firebaseUser);
@@ -95,7 +132,7 @@ export const getCurrentFirebaseUser = (): User | null => {
 
 // Helper: Map Firebase User to App User
 const mapFirebaseUserToUser = (firebaseUser: FirebaseUser, displayName?: string): User => {
-    // Default role is STAFF, admins are determined by email domain or manual setup
+    // Determine role based on admin email list
     const role: Role = isAdminEmail(firebaseUser.email || '') ? 'ADMIN' : 'STAFF';
 
     return {
@@ -106,14 +143,9 @@ const mapFirebaseUserToUser = (firebaseUser: FirebaseUser, displayName?: string)
     };
 };
 
-// Admin check - customize this based on your needs
+// Admin check using environment-configured emails
 const isAdminEmail = (email: string): boolean => {
-    // Add admin emails here or check against your domain
-    const adminEmails = [
-        'admin@dthstore.shop',
-        'pawanrajput@example.com'
-        // Add more admin emails as needed
-    ];
+    const adminEmails = getAdminEmails();
     return adminEmails.includes(email.toLowerCase());
 };
 

@@ -19,11 +19,29 @@ const DEFAULT_NOTIFICATION_CONFIG: NotificationConfig = {
     telegramBotToken: '',
     telegramChatId: '',
     whatsappEnabled: false,
-    whatsappApiUrl: '',
+    whatsappApiUrl: import.meta.env.VITE_WHATSAPP_API_URL || '',
     whatsappApiKey: '',
     whatsappSessionId: 'DTHSTORE',
     whatsappAdminNumber: '',
     browserNotificationsEnabled: true
+};
+
+// Check if demo mode is enabled
+const isDemoMode = (): boolean => {
+    const demoMode = import.meta.env.VITE_DEMO_MODE;
+    return demoMode === 'true' || demoMode === true || demoMode === undefined;
+};
+
+// Demo credentials (only used in demo mode)
+interface DemoUser extends User {
+    password: string;
+}
+
+const DEMO_USERS: Record<string, DemoUser> = {
+    'admin': { id: 'demo-admin', username: 'admin', password: 'admin123', name: 'Demo Admin', role: 'ADMIN' },
+    'staff': { id: 'demo-staff', username: 'staff', password: 'staff123', name: 'Demo Staff', role: 'STAFF' },
+    'admin@demo.com': { id: 'demo-admin', username: 'admin@demo.com', password: 'admin123', name: 'Demo Admin', role: 'ADMIN' },
+    'staff@demo.com': { id: 'demo-staff', username: 'staff@demo.com', password: 'staff123', name: 'Demo Staff', role: 'STAFF' }
 };
 
 // Helpers for LocalStorage Fallback
@@ -33,30 +51,34 @@ const getLocal = <T>(key: string, defaultVal: T): T => {
         return item ? JSON.parse(item) : defaultVal;
     } catch { return defaultVal; }
 };
-const setLocal = (key: string, val: any) => localStorage.setItem(key, JSON.stringify(val));
+const setLocal = (key: string, val: unknown) => localStorage.setItem(key, JSON.stringify(val));
 
 // --- Auth Operations --- 
-const USERS: Record<string, User & { password: string }> = {
-    // Support both username and email-based login
-    'admin': { id: 'u1', username: 'admin', password: '123', name: 'Super Admin', role: 'ADMIN' },
-    'staff': { id: 'u2', username: 'staff', password: '123', name: 'Sales Executive', role: 'STAFF' },
-    // Email-based demo accounts
-    'admin@demo.com': { id: 'u1', username: 'admin@demo.com', password: '123', name: 'Super Admin', role: 'ADMIN' },
-    'staff@demo.com': { id: 'u2', username: 'staff@demo.com', password: '123', name: 'Sales Executive', role: 'STAFF' }
-};
 
+/**
+ * Login user with username/email and password
+ * Only works in demo mode for testing purposes
+ */
 export const loginUser = (usernameOrEmail: string, password: string): User | null => {
-    // Try direct lookup first
-    let user = USERS[usernameOrEmail];
-
-    // If not found and looks like email, try extracting username
-    if (!user && usernameOrEmail.includes('@')) {
-        const usernameFromEmail = usernameOrEmail.split('@')[0];
-        user = USERS[usernameFromEmail];
+    if (!isDemoMode()) {
+        console.warn('Demo login is disabled. Use Firebase authentication.');
+        return null;
     }
 
-    if (user && user.password === password) {
-        const { password: _, ...safeUser } = user;
+    // Normalize input
+    const normalizedInput = usernameOrEmail.toLowerCase().trim();
+
+    // Try direct lookup first
+    let demoUser = DEMO_USERS[normalizedInput];
+
+    // If not found and looks like email, try extracting username
+    if (!demoUser && normalizedInput.includes('@')) {
+        const usernameFromEmail = normalizedInput.split('@')[0];
+        demoUser = DEMO_USERS[usernameFromEmail];
+    }
+
+    if (demoUser && demoUser.password === password) {
+        const { password: _, ...safeUser } = demoUser;
         localStorage.setItem(USER_SESSION_KEY, JSON.stringify(safeUser));
         return safeUser;
     }
@@ -240,8 +262,21 @@ export const saveNotificationConfig = (config: NotificationConfig): Notification
     return config;
 };
 
-// Keeping Media mostly local
-export const getMediaCatalog = (): MediaItem[] => [];
-export const saveMediaItem = (item: MediaItem) => [item];
-export const deleteMediaItem = (id: string) => [];
+// Media operations (stub - primarily using external image URLs)
+export const getMediaCatalog = (): MediaItem[] => {
+    return getLocal<MediaItem[]>('dthstore_media', []);
+};
 
+export const saveMediaItem = (item: MediaItem): MediaItem[] => {
+    const media = getMediaCatalog();
+    const newMedia = [item, ...media];
+    setLocal('dthstore_media', newMedia);
+    return newMedia;
+};
+
+export const deleteMediaItem = (id: string): MediaItem[] => {
+    const media = getMediaCatalog();
+    const newMedia = media.filter(m => m.id !== id);
+    setLocal('dthstore_media', newMedia);
+    return newMedia;
+};

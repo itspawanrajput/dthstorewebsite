@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { X, Lock, Mail, User as UserIcon, ArrowLeft, CheckCircle } from 'lucide-react';
+import { X, Lock, Mail, User as UserIcon, ArrowLeft, CheckCircle, AlertTriangle } from 'lucide-react';
 import { loginUser } from '../services/storageService';
 import {
     loginWithEmail,
@@ -7,6 +7,7 @@ import {
     resetPassword,
     signUpWithEmail
 } from '../services/authService';
+import { isFirebaseConfigured } from '../services/firebase';
 import { User } from '../types';
 
 interface LoginModalProps {
@@ -34,16 +35,8 @@ const LoginModal: React.FC<LoginModalProps> = ({ onClose, onLoginSuccess }) => {
     const [loading, setLoading] = useState(false);
     const [viewMode, setViewMode] = useState<ViewMode>('login');
 
-    // Check if Firebase is configured (not using placeholder)
-    const isFirebaseConfigured = (): boolean => {
-        try {
-            // This check will pass even with placeholder values
-            // In production, Firebase will throw an error on first auth attempt
-            return true;
-        } catch {
-            return false;
-        }
-    };
+    // Check if Firebase is properly configured
+    const firebaseReady = isFirebaseConfigured();
 
     const handleEmailLogin = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -51,25 +44,36 @@ const LoginModal: React.FC<LoginModalProps> = ({ onClose, onLoginSuccess }) => {
         setLoading(true);
 
         try {
-            // Try Firebase auth first
-            const user = await loginWithEmail(email, password);
-            onLoginSuccess(user);
-            onClose();
-        } catch (firebaseError: any) {
-            // Fallback to demo credentials for local testing
-            const demoUser = loginUser(email.split('@')[0], password);
-            if (demoUser) {
-                onLoginSuccess(demoUser);
+            if (firebaseReady) {
+                // Try Firebase auth first
+                const user = await loginWithEmail(email, password);
+                onLoginSuccess(user);
                 onClose();
-            } else {
-                setError(firebaseError.message || 'Invalid credentials');
+                return;
             }
-        } finally {
-            setLoading(false);
+        } catch (firebaseError: unknown) {
+            // Firebase failed, continue to demo login
+            console.log('Firebase auth failed, trying demo login');
         }
+
+        // Fallback to demo credentials for local testing
+        const demoUser = loginUser(email, password);
+        if (demoUser) {
+            onLoginSuccess(demoUser);
+            onClose();
+        } else {
+            setError('Invalid email or password. Try demo credentials below.');
+        }
+
+        setLoading(false);
     };
 
     const handleGoogleLogin = async () => {
+        if (!firebaseReady) {
+            setError('Google sign-in requires Firebase configuration.');
+            return;
+        }
+
         setError('');
         setLoading(true);
 
@@ -77,8 +81,9 @@ const LoginModal: React.FC<LoginModalProps> = ({ onClose, onLoginSuccess }) => {
             const user = await loginWithGoogle();
             onLoginSuccess(user);
             onClose();
-        } catch (err: any) {
-            setError(err.message || 'Google sign-in failed');
+        } catch (err: unknown) {
+            const errorMessage = err instanceof Error ? err.message : 'Google sign-in failed';
+            setError(errorMessage);
         } finally {
             setLoading(false);
         }
@@ -86,6 +91,12 @@ const LoginModal: React.FC<LoginModalProps> = ({ onClose, onLoginSuccess }) => {
 
     const handleSignUp = async (e: React.FormEvent) => {
         e.preventDefault();
+
+        if (!firebaseReady) {
+            setError('Sign up requires Firebase configuration. Use demo login for testing.');
+            return;
+        }
+
         setError('');
         setLoading(true);
 
@@ -93,8 +104,9 @@ const LoginModal: React.FC<LoginModalProps> = ({ onClose, onLoginSuccess }) => {
             const user = await signUpWithEmail(email, password, name);
             onLoginSuccess(user);
             onClose();
-        } catch (err: any) {
-            setError(err.message || 'Sign up failed');
+        } catch (err: unknown) {
+            const errorMessage = err instanceof Error ? err.message : 'Sign up failed';
+            setError(errorMessage);
         } finally {
             setLoading(false);
         }
@@ -102,14 +114,21 @@ const LoginModal: React.FC<LoginModalProps> = ({ onClose, onLoginSuccess }) => {
 
     const handleForgotPassword = async (e: React.FormEvent) => {
         e.preventDefault();
+
+        if (!firebaseReady) {
+            setError('Password reset requires Firebase configuration.');
+            return;
+        }
+
         setError('');
         setLoading(true);
 
         try {
             await resetPassword(email);
             setViewMode('reset-sent');
-        } catch (err: any) {
-            setError(err.message || 'Failed to send reset email');
+        } catch (err: unknown) {
+            const errorMessage = err instanceof Error ? err.message : 'Failed to send reset email';
+            setError(errorMessage);
         } finally {
             setLoading(false);
         }
@@ -138,9 +157,25 @@ const LoginModal: React.FC<LoginModalProps> = ({ onClose, onLoginSuccess }) => {
                     <Lock className="mr-2" size={20} />
                     {titles[viewMode]}
                 </h2>
-                <button onClick={onClose} className="hover:bg-blue-700 p-1 rounded-full transition">
+                <button onClick={onClose} className="hover:bg-blue-700 p-1 rounded-full transition" aria-label="Close">
                     <X size={24} />
                 </button>
+            </div>
+        );
+    };
+
+    const renderDemoModeNotice = () => {
+        if (firebaseReady) return null;
+
+        return (
+            <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 flex items-start">
+                <AlertTriangle size={18} className="text-amber-600 mr-2 mt-0.5 flex-shrink-0" />
+                <div className="text-sm text-amber-800">
+                    <p className="font-medium">Demo Mode Active</p>
+                    <p className="text-amber-700 text-xs mt-1">
+                        Firebase is not configured. Only demo login is available.
+                    </p>
+                </div>
             </div>
         );
     };
@@ -153,40 +188,47 @@ const LoginModal: React.FC<LoginModalProps> = ({ onClose, onLoginSuccess }) => {
                 </div>
             )}
 
-            {/* Google Sign In Button */}
-            <button
-                type="button"
-                onClick={handleGoogleLogin}
-                disabled={loading}
-                className="w-full flex items-center justify-center gap-3 bg-white border-2 border-gray-200 hover:border-gray-300 hover:bg-gray-50 text-gray-700 font-medium py-3 px-4 rounded-lg shadow-sm transition duration-200 disabled:opacity-50"
-            >
-                <GoogleIcon />
-                Continue with Google
-            </button>
+            {renderDemoModeNotice()}
 
-            <div className="relative">
-                <div className="absolute inset-0 flex items-center">
-                    <div className="w-full border-t border-gray-200"></div>
-                </div>
-                <div className="relative flex justify-center text-sm">
-                    <span className="px-4 bg-white text-gray-500">or sign in with email</span>
-                </div>
-            </div>
+            {/* Google Sign In Button - Only show if Firebase is configured */}
+            {firebaseReady && (
+                <>
+                    <button
+                        type="button"
+                        onClick={handleGoogleLogin}
+                        disabled={loading}
+                        className="w-full flex items-center justify-center gap-3 bg-white border-2 border-gray-200 hover:border-gray-300 hover:bg-gray-50 text-gray-700 font-medium py-3 px-4 rounded-lg shadow-sm transition duration-200 disabled:opacity-50"
+                    >
+                        <GoogleIcon />
+                        Continue with Google
+                    </button>
+
+                    <div className="relative">
+                        <div className="absolute inset-0 flex items-center">
+                            <div className="w-full border-t border-gray-200"></div>
+                        </div>
+                        <div className="relative flex justify-center text-sm">
+                            <span className="px-4 bg-white text-gray-500">or sign in with email</span>
+                        </div>
+                    </div>
+                </>
+            )}
 
             <form onSubmit={handleEmailLogin} className="space-y-4">
                 <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Email / Username</label>
                     <div className="relative">
                         <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-gray-400">
                             <Mail size={18} />
                         </div>
                         <input
-                            type="email"
+                            type="text"
                             value={email}
                             onChange={(e) => setEmail(e.target.value)}
                             className="block w-full pl-10 pr-3 py-2 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500 transition"
-                            placeholder="Enter your email"
+                            placeholder="Enter email or username"
                             required
+                            autoComplete="username"
                         />
                     </div>
                 </div>
@@ -204,19 +246,22 @@ const LoginModal: React.FC<LoginModalProps> = ({ onClose, onLoginSuccess }) => {
                             className="block w-full pl-10 pr-3 py-2 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500 transition"
                             placeholder="••••••••"
                             required
+                            autoComplete="current-password"
                         />
                     </div>
                 </div>
 
-                <div className="flex justify-end">
-                    <button
-                        type="button"
-                        onClick={() => { setViewMode('forgot-password'); setError(''); }}
-                        className="text-sm text-blue-600 hover:text-blue-800 font-medium"
-                    >
-                        Forgot password?
-                    </button>
-                </div>
+                {firebaseReady && (
+                    <div className="flex justify-end">
+                        <button
+                            type="button"
+                            onClick={() => { setViewMode('forgot-password'); setError(''); }}
+                            className="text-sm text-blue-600 hover:text-blue-800 font-medium"
+                        >
+                            Forgot password?
+                        </button>
+                    </div>
+                )}
 
                 <button
                     type="submit"
@@ -227,21 +272,24 @@ const LoginModal: React.FC<LoginModalProps> = ({ onClose, onLoginSuccess }) => {
                 </button>
             </form>
 
-            <div className="text-center">
-                <span className="text-sm text-gray-500">Don't have an account? </span>
-                <button
-                    type="button"
-                    onClick={() => { setViewMode('signup'); setError(''); }}
-                    className="text-sm text-blue-600 hover:text-blue-800 font-medium"
-                >
-                    Create one
-                </button>
-            </div>
+            {firebaseReady && (
+                <div className="text-center">
+                    <span className="text-sm text-gray-500">Don't have an account? </span>
+                    <button
+                        type="button"
+                        onClick={() => { setViewMode('signup'); setError(''); }}
+                        className="text-sm text-blue-600 hover:text-blue-800 font-medium"
+                    >
+                        Create one
+                    </button>
+                </div>
+            )}
 
+            {/* Demo credentials notice */}
             <div className="text-center text-xs text-gray-400 mt-4 pt-4 border-t">
-                <p>Demo Credentials (for testing):</p>
-                <p>Admin: admin@demo.com / 123</p>
-                <p>Staff: staff@demo.com / 123</p>
+                <p className="font-medium text-gray-500 mb-1">Demo Credentials</p>
+                <p>Admin: <code className="bg-gray-100 px-1 rounded">admin</code> / <code className="bg-gray-100 px-1 rounded">admin123</code></p>
+                <p>Staff: <code className="bg-gray-100 px-1 rounded">staff</code> / <code className="bg-gray-100 px-1 rounded">staff123</code></p>
             </div>
         </div>
     );
@@ -254,87 +302,93 @@ const LoginModal: React.FC<LoginModalProps> = ({ onClose, onLoginSuccess }) => {
                 </div>
             )}
 
-            {/* Google Sign Up Button */}
-            <button
-                type="button"
-                onClick={handleGoogleLogin}
-                disabled={loading}
-                className="w-full flex items-center justify-center gap-3 bg-white border-2 border-gray-200 hover:border-gray-300 hover:bg-gray-50 text-gray-700 font-medium py-3 px-4 rounded-lg shadow-sm transition duration-200 disabled:opacity-50"
-            >
-                <GoogleIcon />
-                Sign up with Google
-            </button>
+            {!firebaseReady && renderDemoModeNotice()}
 
-            <div className="relative">
-                <div className="absolute inset-0 flex items-center">
-                    <div className="w-full border-t border-gray-200"></div>
-                </div>
-                <div className="relative flex justify-center text-sm">
-                    <span className="px-4 bg-white text-gray-500">or sign up with email</span>
-                </div>
-            </div>
+            {firebaseReady && (
+                <>
+                    {/* Google Sign Up Button */}
+                    <button
+                        type="button"
+                        onClick={handleGoogleLogin}
+                        disabled={loading}
+                        className="w-full flex items-center justify-center gap-3 bg-white border-2 border-gray-200 hover:border-gray-300 hover:bg-gray-50 text-gray-700 font-medium py-3 px-4 rounded-lg shadow-sm transition duration-200 disabled:opacity-50"
+                    >
+                        <GoogleIcon />
+                        Sign up with Google
+                    </button>
 
-            <form onSubmit={handleSignUp} className="space-y-4">
-                <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Full Name</label>
                     <div className="relative">
-                        <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-gray-400">
-                            <UserIcon size={18} />
+                        <div className="absolute inset-0 flex items-center">
+                            <div className="w-full border-t border-gray-200"></div>
                         </div>
-                        <input
-                            type="text"
-                            value={name}
-                            onChange={(e) => setName(e.target.value)}
-                            className="block w-full pl-10 pr-3 py-2 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500 transition"
-                            placeholder="Enter your name"
-                            required
-                        />
-                    </div>
-                </div>
-
-                <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
-                    <div className="relative">
-                        <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-gray-400">
-                            <Mail size={18} />
+                        <div className="relative flex justify-center text-sm">
+                            <span className="px-4 bg-white text-gray-500">or sign up with email</span>
                         </div>
-                        <input
-                            type="email"
-                            value={email}
-                            onChange={(e) => setEmail(e.target.value)}
-                            className="block w-full pl-10 pr-3 py-2 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500 transition"
-                            placeholder="Enter your email"
-                            required
-                        />
                     </div>
-                </div>
 
-                <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Password</label>
-                    <div className="relative">
-                        <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-gray-400">
-                            <Lock size={18} />
+                    <form onSubmit={handleSignUp} className="space-y-4">
+                        <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-1">Full Name</label>
+                            <div className="relative">
+                                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-gray-400">
+                                    <UserIcon size={18} />
+                                </div>
+                                <input
+                                    type="text"
+                                    value={name}
+                                    onChange={(e) => setName(e.target.value)}
+                                    className="block w-full pl-10 pr-3 py-2 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500 transition"
+                                    placeholder="Enter your name"
+                                    required
+                                />
+                            </div>
                         </div>
-                        <input
-                            type="password"
-                            value={password}
-                            onChange={(e) => setPassword(e.target.value)}
-                            className="block w-full pl-10 pr-3 py-2 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500 transition"
-                            placeholder="Min. 6 characters"
-                            minLength={6}
-                            required
-                        />
-                    </div>
-                </div>
 
-                <button
-                    type="submit"
-                    disabled={loading}
-                    className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-4 rounded-lg shadow transition duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                    {loading ? 'Creating Account...' : 'Create Account'}
-                </button>
-            </form>
+                        <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
+                            <div className="relative">
+                                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-gray-400">
+                                    <Mail size={18} />
+                                </div>
+                                <input
+                                    type="email"
+                                    value={email}
+                                    onChange={(e) => setEmail(e.target.value)}
+                                    className="block w-full pl-10 pr-3 py-2 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500 transition"
+                                    placeholder="Enter your email"
+                                    required
+                                />
+                            </div>
+                        </div>
+
+                        <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-1">Password</label>
+                            <div className="relative">
+                                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-gray-400">
+                                    <Lock size={18} />
+                                </div>
+                                <input
+                                    type="password"
+                                    value={password}
+                                    onChange={(e) => setPassword(e.target.value)}
+                                    className="block w-full pl-10 pr-3 py-2 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500 transition"
+                                    placeholder="Min. 6 characters"
+                                    minLength={6}
+                                    required
+                                />
+                            </div>
+                        </div>
+
+                        <button
+                            type="submit"
+                            disabled={loading}
+                            className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-4 rounded-lg shadow transition duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                            {loading ? 'Creating Account...' : 'Create Account'}
+                        </button>
+                    </form>
+                </>
+            )}
 
             <div className="text-center">
                 <span className="text-sm text-gray-500">Already have an account? </span>
@@ -357,36 +411,42 @@ const LoginModal: React.FC<LoginModalProps> = ({ onClose, onLoginSuccess }) => {
                 </div>
             )}
 
-            <div className="text-center text-gray-600 mb-4">
-                <p>Enter your email address and we'll send you a link to reset your password.</p>
-            </div>
+            {!firebaseReady && renderDemoModeNotice()}
 
-            <form onSubmit={handleForgotPassword} className="space-y-4">
-                <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Email Address</label>
-                    <div className="relative">
-                        <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-gray-400">
-                            <Mail size={18} />
-                        </div>
-                        <input
-                            type="email"
-                            value={email}
-                            onChange={(e) => setEmail(e.target.value)}
-                            className="block w-full pl-10 pr-3 py-2 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500 transition"
-                            placeholder="Enter your email"
-                            required
-                        />
+            {firebaseReady && (
+                <>
+                    <div className="text-center text-gray-600 mb-4">
+                        <p>Enter your email address and we'll send you a link to reset your password.</p>
                     </div>
-                </div>
 
-                <button
-                    type="submit"
-                    disabled={loading}
-                    className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-4 rounded-lg shadow transition duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                    {loading ? 'Sending...' : 'Send Reset Link'}
-                </button>
-            </form>
+                    <form onSubmit={handleForgotPassword} className="space-y-4">
+                        <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-1">Email Address</label>
+                            <div className="relative">
+                                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-gray-400">
+                                    <Mail size={18} />
+                                </div>
+                                <input
+                                    type="email"
+                                    value={email}
+                                    onChange={(e) => setEmail(e.target.value)}
+                                    className="block w-full pl-10 pr-3 py-2 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500 transition"
+                                    placeholder="Enter your email"
+                                    required
+                                />
+                            </div>
+                        </div>
+
+                        <button
+                            type="submit"
+                            disabled={loading}
+                            className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-4 rounded-lg shadow transition duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                            {loading ? 'Sending...' : 'Send Reset Link'}
+                        </button>
+                    </form>
+                </>
+            )}
 
             <div className="text-center">
                 <button

@@ -287,7 +287,7 @@ const LeadsManager: React.FC<LeadsManagerProps> = ({ user }) => {
     const handleStatusChange = async (lead: Lead, newStatus: LeadStatus) => {
         const updated = { ...lead, status: newStatus };
         if (newStatus === LeadStatus.INSTALLED && !updated.orderId) {
-            updated.orderId = `ORD-${Date.now().toString().substr(-6)}`;
+            updated.orderId = `ORD-${Date.now().toString().slice(-6)}`;
         }
         const newList = await updateLead(updated);
         setLeads(newList);
