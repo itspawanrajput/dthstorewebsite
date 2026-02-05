@@ -1,0 +1,38 @@
+Backend Update Instructions (EC2)
+===============================
+
+Your backend code has been significantly upgraded to support Facebook Leads and centralized storage.
+Follow these steps to update your running server:
+
+1. SSH into your server:
+   ssh -i "dthstore-key.pem" ubuntu@ec2-13-221-113-50.compute-1.amazonaws.com
+
+2. Navigate to the project directory:
+   cd dthstorewebsite/whatsapp-api
+
+   (Note: If you have a different structure, find where 'whatsapp-api' is running)
+
+3. Pull the latest changes:
+   git pull origin main
+
+   * If you get a "merge conflict" or "local changes" error, run:
+     git reset --hard origin/main
+     git pull origin main
+
+4. Restart the server:
+   pm2 restart all
+
+5. Verify it's running:
+   pm2 status
+
+---------------------------------------------------
+Facebook Webhook Configuration
+---------------------------------------------------
+1. Go to Facebook Developer Portal -> Webhooks.
+2. Select "Page".
+3. Callback URL: http://ec2-13-221-113-50.compute-1.amazonaws.com:3000/leads/webhook
+4. Verify Token: dthstore_fb_token
+5. Click "Verify and Save".
+6. Subscribe to "leadgen" event.
+
+Done!

@@ -84,44 +84,104 @@ async function apiCall<T>(p: Promise<Response>, fallback: () => T): Promise<T> {
 
 // --- Leads Operations ---
 
+// Helper to get remote config
+const getRemote = () => {
+    const c = getNotificationConfig();
+    if (c.whatsappEnabled && c.whatsappApiUrl) {
+        return {
+            url: c.whatsappApiUrl.replace(/\/$/, ''), // Remove trailing slash
+            headers: {
+                'Content-Type': 'application/json',
+                ...(c.whatsappApiKey ? { 'x-api-key': c.whatsappApiKey } : {})
+            }
+        };
+    }
+    return null;
+}
+
 export const getLeads = async (): Promise<Lead[]> => {
-    return apiCall(fetch(`${API_URL}/leads`), () => getLocal(LEADS_KEY, INITIAL_LEADS));
+    const remote = getRemote();
+    if (remote) {
+        try {
+            const res = await fetch(`${remote.url}/leads`, { headers: remote.headers });
+            if (res.ok) {
+                const data = await res.json();
+                if (data.success && Array.isArray(data.leads)) return data.leads;
+            }
+        } catch (e) {
+            console.warn("Remote leads fetch failing, falling back to local", e);
+        }
+    }
+    // Fallback to local
+    return getLocal(LEADS_KEY, INITIAL_LEADS);
 };
 
 export const saveLead = async (lead: Lead): Promise<Lead> => {
-    return apiCall(
-        fetch(`${API_URL}/leads`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(lead) }),
-        () => {
-            const leads = getLocal(LEADS_KEY, INITIAL_LEADS);
-            const newLeads = [lead, ...leads];
-            setLocal(LEADS_KEY, newLeads);
-            return lead;
+    const remote = getRemote();
+    if (remote) {
+        try {
+            const res = await fetch(`${remote.url}/leads`, {
+                method: 'POST',
+                headers: remote.headers,
+                body: JSON.stringify(lead)
+            });
+            if (res.ok) {
+                const data = await res.json();
+                if (data.success) return data.lead;
+            }
+        } catch (e) {
+            console.warn("Remote save failed, saving locally", e);
         }
-    );
+    }
+
+    // Local save (Fallback)
+    const leads = getLocal<Lead[]>(LEADS_KEY, INITIAL_LEADS);
+    const newLeads = [lead, ...leads];
+    setLocal(LEADS_KEY, newLeads);
+    return lead;
 };
 
 export const updateLead = async (updatedLead: Lead): Promise<Lead[]> => {
-    return apiCall(
-        fetch(`${API_URL}/leads/${updatedLead.id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(updatedLead) }),
-        () => {
-            const leads = getLocal<Lead[]>(LEADS_KEY, INITIAL_LEADS);
-            const newLeads = leads.map(l => l.id === updatedLead.id ? updatedLead : l);
-            setLocal(LEADS_KEY, newLeads);
-            return newLeads;
-        }
-    );
+    const remote = getRemote();
+    if (remote) {
+        try {
+            const res = await fetch(`${remote.url}/leads/${updatedLead.id}`, {
+                method: 'PUT',
+                headers: remote.headers,
+                body: JSON.stringify(updatedLead)
+            });
+            if (res.ok) {
+                // If remote update success, fetch fresh list
+                return getLeads();
+            }
+        } catch (e) { console.warn("Remote update failed", e); }
+    }
+
+    // Local Logic
+    const leads = getLocal<Lead[]>(LEADS_KEY, INITIAL_LEADS);
+    const newLeads = leads.map(l => l.id === updatedLead.id ? updatedLead : l);
+    setLocal(LEADS_KEY, newLeads);
+    return newLeads;
 };
 
 export const deleteLead = async (leadId: string): Promise<Lead[]> => {
-    return apiCall(
-        fetch(`${API_URL}/leads/${leadId}`, { method: 'DELETE' }),
-        () => {
-            const leads = getLocal<Lead[]>(LEADS_KEY, INITIAL_LEADS);
-            const newLeads = leads.filter(l => l.id !== leadId);
-            setLocal(LEADS_KEY, newLeads);
-            return newLeads;
-        }
-    );
+    const remote = getRemote();
+    if (remote) {
+        try {
+            await fetch(`${remote.url}/leads/${leadId}`, {
+                method: 'DELETE',
+                headers: remote.headers
+            });
+            // Fetch fresh list
+            return getLeads();
+        } catch (e) { console.warn("Remote delete failed", e); }
+    }
+
+    // Local Logic
+    const leads = getLocal<Lead[]>(LEADS_KEY, INITIAL_LEADS);
+    const newLeads = leads.filter(l => l.id !== leadId);
+    setLocal(LEADS_KEY, newLeads);
+    return newLeads;
 };
 
 
