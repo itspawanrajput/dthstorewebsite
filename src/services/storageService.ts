@@ -1,9 +1,22 @@
 import { Lead, Product, User, MediaItem, SiteConfig, NotificationConfig } from '../types';
 import { INITIAL_LEADS, PRODUCTS as INITIAL_PRODUCTS, DEFAULT_SITE_CONFIG } from '../constants';
+import { db } from './firebase';
+import {
+    collection,
+    addDoc,
+    getDocs,
+    doc,
+    updateDoc,
+    deleteDoc,
+    query,
+    where,
+    orderBy,
+    Timestamp
+} from 'firebase/firestore';
 
 const API_URL = '/api';
 
-// Fallback Keys
+// Fallback Keys (Still used for non-critical data or offline fallback)
 const LEADS_KEY = 'dthstore_leads_v2';
 const PRODUCTS_KEY = 'dthstore_products_v1';
 const USER_SESSION_KEY = 'dthstore_user_session';
@@ -32,6 +45,17 @@ const isDemoMode = (): boolean => {
     return demoMode === 'true' || demoMode === true || demoMode === undefined;
 };
 
+// Helpers for LocalStorage Fallback (Legacy / Config)
+const getLocal = <T>(key: string, defaultVal: T): T => {
+    try {
+        const item = localStorage.getItem(key);
+        return item ? JSON.parse(item) : defaultVal;
+    } catch { return defaultVal; }
+};
+const setLocal = (key: string, val: unknown) => localStorage.setItem(key, JSON.stringify(val));
+
+// --- Auth Operations --- (Handled by Firebase usually, but keeping local session for non-auth persistence if needed)
+
 // Demo credentials (only used in demo mode)
 interface DemoUser extends User {
     password: string;
@@ -44,21 +68,6 @@ const DEMO_USERS: Record<string, DemoUser> = {
     'staff@demo.com': { id: 'demo-staff', username: 'staff@demo.com', password: 'staff123', name: 'Demo Staff', role: 'STAFF' }
 };
 
-// Helpers for LocalStorage Fallback
-const getLocal = <T>(key: string, defaultVal: T): T => {
-    try {
-        const item = localStorage.getItem(key);
-        return item ? JSON.parse(item) : defaultVal;
-    } catch { return defaultVal; }
-};
-const setLocal = (key: string, val: unknown) => localStorage.setItem(key, JSON.stringify(val));
-
-// --- Auth Operations --- 
-
-/**
- * Login user with username/email and password
- * Only works in demo mode for testing purposes
- */
 export const loginUser = (usernameOrEmail: string, password: string): User | null => {
     if (!isDemoMode()) {
         console.warn('Demo login is disabled. Use Firebase authentication.');
@@ -104,61 +113,59 @@ async function apiCall<T>(p: Promise<Response>, fallback: () => T): Promise<T> {
     }
 }
 
-// --- Leads Operations ---
+// --- Leads Operations (FIRESTORE ENABLED) ---
 
-// Helper to get remote config
-const getRemote = () => {
-    const c = getNotificationConfig();
-    if (c.whatsappEnabled && c.whatsappApiUrl) {
-        return {
-            url: c.whatsappApiUrl.replace(/\/$/, ''), // Remove trailing slash
-            headers: {
-                'Content-Type': 'application/json',
-                ...(c.whatsappApiKey ? { 'x-api-key': c.whatsappApiKey } : {})
-            }
-        };
-    }
-    return null;
-}
+const leadsCollection = db ? collection(db, 'leads') : null;
 
 export const getLeads = async (): Promise<Lead[]> => {
-    const remote = getRemote();
-    if (remote) {
+    if (leadsCollection) {
         try {
-            const res = await fetch(`${remote.url}/leads`, { headers: remote.headers });
-            if (res.ok) {
-                const data = await res.json();
-                if (data.success && Array.isArray(data.leads)) return data.leads;
-            }
+            const q = query(leadsCollection, orderBy('createdAt', 'desc'));
+            const snapshot = await getDocs(q);
+            return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Lead));
         } catch (e) {
-            console.warn("Remote leads fetch failing, falling back to local", e);
+            console.error("Firestore getLeads failed:", e);
         }
     }
-    // Fallback to local
+    // Fallback meant for dev only now
     return getLocal(LEADS_KEY, INITIAL_LEADS);
 };
 
 export const getUserLeads = async (userId: string): Promise<Lead[]> => {
-    // For now, filtering local leads. In production with Firestore, this would be a query.
-    const allLeads = await getLeads();
+    if (leadsCollection) {
+        try {
+            const q = query(leadsCollection, where('userId', '==', userId), orderBy('createdAt', 'desc'));
+            const snapshot = await getDocs(q);
+            return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Lead));
+        } catch (e) {
+            console.error("Firestore getUserLeads failed:", e);
+        }
+    }
+    // Fallback: Filter local leads
+    const allLeads = getLocal<Lead[]>(LEADS_KEY, INITIAL_LEADS);
     return allLeads.filter(lead => lead.userId === userId);
 };
 
 export const saveLead = async (lead: Lead): Promise<Lead> => {
-    const remote = getRemote();
-    if (remote) {
+    if (leadsCollection) {
         try {
-            const res = await fetch(`${remote.url}/leads`, {
-                method: 'POST',
-                headers: remote.headers,
-                body: JSON.stringify(lead)
+            // Remove 'id' if present, let Firestore generate it or use it as doc ID
+            // Firestore auto-generates IDs, so we usually don't send one unless we want to force it.
+            // But our app generates UUIDs on client. We can use that as doc ID or let it be a field.
+            // Let's let Firestore generate the Doc ID, and we update the 'id' field to match, OR just use the client ID.
+            // Simpler: Just addDoc (auto ID). And ensure we store the client-side ID too if needed, or replace it.
+
+            // Actually, best practice: Let Firestore make the ID.
+            const { id, ...leadData } = lead;
+            const docRef = await addDoc(leadsCollection, {
+                ...leadData,
+                createdAt: Date.now() // Ensure server timestamp logic if needed, but number is fine for now
             });
-            if (res.ok) {
-                const data = await res.json();
-                if (data.success) return data.lead;
-            }
+
+            // Return lead with new Firestore ID
+            return { ...lead, id: docRef.id };
         } catch (e) {
-            console.warn("Remote save failed, saving locally", e);
+            console.error("Firestore saveLead failed:", e);
         }
     }
 
@@ -170,19 +177,14 @@ export const saveLead = async (lead: Lead): Promise<Lead> => {
 };
 
 export const updateLead = async (updatedLead: Lead): Promise<Lead[]> => {
-    const remote = getRemote();
-    if (remote) {
+    if (db) {
         try {
-            const res = await fetch(`${remote.url}/leads/${updatedLead.id}`, {
-                method: 'PUT',
-                headers: remote.headers,
-                body: JSON.stringify(updatedLead)
-            });
-            if (res.ok) {
-                // If remote update success, fetch fresh list
-                return getLeads();
-            }
-        } catch (e) { console.warn("Remote update failed", e); }
+            const leadRef = doc(db, 'leads', updatedLead.id);
+            const { id, ...dataToUpdate } = updatedLead;
+            await updateDoc(leadRef, dataToUpdate);
+            // Fetch fresh
+            return getLeads();
+        } catch (e) { console.error("Firestore updateLead failed:", e); }
     }
 
     // Local Logic
@@ -193,16 +195,11 @@ export const updateLead = async (updatedLead: Lead): Promise<Lead[]> => {
 };
 
 export const deleteLead = async (leadId: string): Promise<Lead[]> => {
-    const remote = getRemote();
-    if (remote) {
+    if (db) {
         try {
-            await fetch(`${remote.url}/leads/${leadId}`, {
-                method: 'DELETE',
-                headers: remote.headers
-            });
-            // Fetch fresh list
+            await deleteDoc(doc(db, 'leads', leadId));
             return getLeads();
-        } catch (e) { console.warn("Remote delete failed", e); }
+        } catch (e) { console.error("Firestore deleteLead failed:", e); }
     }
 
     // Local Logic
@@ -213,13 +210,14 @@ export const deleteLead = async (leadId: string): Promise<Lead[]> => {
 };
 
 
-// --- Product Operations ---
+// --- Product Operations (Still Local for now, easier to CMS later) ---
 
 export const getProducts = (): Product[] => {
     return getLocal(PRODUCTS_KEY, INITIAL_PRODUCTS as Product[]);
 };
 
 export const saveProduct = async (product: Product): Promise<Product[]> => {
+    // Ideally migrate to Firestore 'products' collection too
     return apiCall(
         fetch(`${API_URL}/products`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(product) }),
         () => {
@@ -268,7 +266,7 @@ export const saveNotificationConfig = (config: NotificationConfig): Notification
     return config;
 };
 
-// Media operations (stub - primarily using external image URLs)
+// Media operations
 export const getMediaCatalog = (): MediaItem[] => {
     return getLocal<MediaItem[]>('dthstore_media', []);
 };

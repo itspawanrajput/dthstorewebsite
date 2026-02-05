@@ -3,17 +3,6 @@
  * 
  * Configuration is loaded from environment variables.
  * Set these in your .env file (see .env.example for reference).
- * 
- * To set up Firebase:
- * 1. Go to https://console.firebase.google.com/
- * 2. Create a new project or select an existing one
- * 3. Go to Project Settings > General > Your Apps
- * 4. Add a Web App if you haven't already
- * 5. Copy the values to your .env file
- * 6. Enable Authentication:
- *    - Go to Authentication > Sign-in method
- *    - Enable "Email/Password" provider
- *    - Enable "Google" provider
  */
 
 import { initializeApp, FirebaseApp } from 'firebase/app';
@@ -29,6 +18,7 @@ import {
     User as FirebaseUser,
     Auth
 } from 'firebase/auth';
+import { getFirestore, Firestore } from 'firebase/firestore';
 
 // Firebase configuration from environment variables
 const firebaseConfig = {
@@ -54,12 +44,14 @@ export const isFirebaseConfigured = (): boolean => {
 // Initialize Firebase only if configured
 let app: FirebaseApp | null = null;
 let auth: Auth | null = null;
+let db: Firestore | null = null;
 let googleProvider: GoogleAuthProvider | null = null;
 
 if (isFirebaseConfigured()) {
     try {
         app = initializeApp(firebaseConfig);
         auth = getAuth(app);
+        db = getFirestore(app);
         googleProvider = new GoogleAuthProvider();
 
         // Configure Google provider
@@ -76,7 +68,7 @@ if (isFirebaseConfigured()) {
 }
 
 // Export auth instance (may be null if not configured)
-export { auth, googleProvider };
+export { auth, db, googleProvider };
 
 // Re-export Firebase auth functions
 export {
