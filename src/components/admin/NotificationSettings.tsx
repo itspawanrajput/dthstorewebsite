@@ -4,7 +4,7 @@ import { getNotificationConfig, saveNotificationConfig } from '../../services/st
 import {
     Bell, Mail, MessageCircle, Send, Save, CheckCircle, AlertCircle,
     ExternalLink, Eye, EyeOff, Info, TestTube, Server, RefreshCw,
-    Power, PowerOff, Smartphone, Loader2, QrCode
+    Power, PowerOff, Smartphone, Loader2, QrCode, Facebook, Globe, Key
 } from 'lucide-react';
 
 const NotificationSettings: React.FC = () => {
@@ -34,17 +34,12 @@ const NotificationSettings: React.FC = () => {
     const [qrLoading, setQrLoading] = useState(false);
     const [sessionAction, setSessionAction] = useState<string | null>(null);
 
-    useEffect(() => {
-        const savedConfig = getNotificationConfig();
-        setConfig(savedConfig);
-    }, []);
-
-    // Auto-check WhatsApp status when API URL changes
-    useEffect(() => {
-        if (config.whatsappApiUrl && config.whatsappEnabled) {
-            checkWhatsAppStatus();
-        }
-    }, [config.whatsappApiUrl, config.whatsappEnabled]);
+    // Facebook Settings State
+    const [fbSettings, setFbSettings] = useState({
+        facebookVerifyToken: 'dthstore_fb_token',
+        facebookPageAccessToken: ''
+    });
+    const [fbLoading, setFbLoading] = useState(false);
 
     const handleSave = () => {
         saveNotificationConfig(config);
@@ -162,6 +157,64 @@ const NotificationSettings: React.FC = () => {
         }
         setQrLoading(false);
     };
+
+    const fetchFbSettings = async () => {
+        if (!config.whatsappApiUrl) return;
+        try {
+            const res = await fetch(`${config.whatsappApiUrl}/settings`, { headers: getApiHeaders() });
+            const data = await res.json();
+            if (data.success && data.settings) {
+                setFbSettings(prev => ({ ...prev, ...data.settings }));
+            }
+        } catch (e) {
+            console.error('Failed to fetch FB settings', e);
+        }
+    };
+
+    const saveFbSettings = async () => {
+        if (!config.whatsappApiUrl) return;
+        setFbLoading(true);
+        try {
+            const res = await fetch(`${config.whatsappApiUrl}/settings`, {
+                method: 'POST',
+                headers: getApiHeaders(),
+                body: JSON.stringify(fbSettings)
+            });
+            const data = await res.json();
+            if (data.success) {
+                setTestResult({ channel: 'facebook', success: true, message: 'Facebook settings saved to server!' });
+            } else {
+                setTestResult({ channel: 'facebook', success: false, message: 'Failed to save: ' + data.message });
+            }
+        } catch (e: any) {
+            setTestResult({ channel: 'facebook', success: false, message: e.message || 'Error saving settings' });
+        }
+        setFbLoading(false);
+    };
+
+    // Load config on mount and auto-fetch FB settings/check WhatsApp status when config changes
+    useEffect(() => {
+        const savedConfig = getNotificationConfig();
+        setConfig(savedConfig);
+
+        if (savedConfig.whatsappApiUrl && savedConfig.whatsappEnabled) {
+            // Use a timeout to ensure state is updated before calling checkWhatsAppStatus
+            // or pass savedConfig directly if checkWhatsAppStatus can accept it.
+            // For now, relying on the next render cycle to pick up the new config.
+            // A more robust solution might involve passing savedConfig to checkWhatsAppStatus.
+            checkWhatsAppStatus();
+            fetchFbSettings();
+        }
+    }, []); // Run once on mount to load initial config
+
+
+    // Auto-fetch FB settings when config changes
+    useEffect(() => {
+        if (config.whatsappApiUrl && config.whatsappEnabled) {
+            checkWhatsAppStatus();
+            fetchFbSettings();
+        }
+    }, [config.whatsappApiUrl, config.whatsappEnabled]);
 
     const testNotification = async (channel: 'email' | 'telegram' | 'whatsapp') => {
         setTesting(channel);
@@ -305,8 +358,8 @@ const NotificationSettings: React.FC = () => {
                     <button
                         onClick={handleSave}
                         className={`px-6 py-3 rounded-xl font-bold flex items-center transition ${saved
-                                ? 'bg-green-500 text-white'
-                                : 'bg-white text-blue-600 hover:bg-blue-50'
+                            ? 'bg-green-500 text-white'
+                            : 'bg-white text-blue-600 hover:bg-blue-50'
                             }`}
                     >
                         {saved ? (
@@ -321,8 +374,8 @@ const NotificationSettings: React.FC = () => {
             {/* Test Result Banner */}
             {testResult && (
                 <div className={`p-4 rounded-xl flex items-center ${testResult.success
-                        ? 'bg-green-50 border border-green-200 text-green-800'
-                        : 'bg-red-50 border border-red-200 text-red-800'
+                    ? 'bg-green-50 border border-green-200 text-green-800'
+                    : 'bg-red-50 border border-red-200 text-red-800'
                     }`}>
                     {testResult.success ? <CheckCircle size={20} className="mr-3" /> : <AlertCircle size={20} className="mr-3" />}
                     <span className="font-medium">{testResult.channel.toUpperCase()}:</span>
@@ -540,6 +593,89 @@ const NotificationSettings: React.FC = () => {
                         </div>
                     </div>
                 )}
+            </div>
+
+            {/* Facebook Lead Ads Section */}
+            <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+                <div className="p-6 border-b border-gray-100 bg-gradient-to-r from-blue-50 to-indigo-50">
+                    <div className="flex items-center justify-between flex-wrap gap-4">
+                        <div className="flex items-center">
+                            <div className="w-14 h-14 bg-blue-600 rounded-2xl flex items-center justify-center mr-4 shadow-lg">
+                                <Facebook className="text-white" size={28} />
+                            </div>
+                            <div>
+                                <h3 className="font-bold text-gray-900 text-lg">Facebook Lead Ads</h3>
+                                <p className="text-sm text-gray-500">Integrate Leads from Facebook & Instagram</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div className="p-6 space-y-6">
+                    <div className="bg-blue-50 border border-blue-200 rounded-xl p-5">
+                        <h4 className="font-semibold text-blue-900 flex items-center mb-3">
+                            <Globe size={18} className="mr-2" /> Webhook Configuration
+                        </h4>
+                        <p className="text-sm text-blue-700 mb-2">
+                            Enter this URL in your Facebook App &gt; Webhooks &gt; Page:
+                        </p>
+                        <div className="flex items-center space-x-2">
+                            <input
+                                readOnly
+                                value={config.whatsappApiUrl ? `${config.whatsappApiUrl}/leads/webhook` : 'Configure API URL first'}
+                                className="flex-1 p-3 bg-white border border-blue-200 rounded-lg text-gray-600 font-mono text-sm"
+                            />
+                            <button
+                                onClick={() => navigator.clipboard.writeText(`${config.whatsappApiUrl}/leads/webhook`)}
+                                className="p-3 bg-white border border-blue-200 rounded-lg hover:bg-blue-100 text-blue-600"
+                                title="Copy URL"
+                            >
+                                <CheckCircle size={18} />
+                            </button>
+                        </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-1">Verify Token</label>
+                            <div className="relative">
+                                <Key className="absolute left-3 top-3 text-gray-400" size={18} />
+                                <input
+                                    type="text"
+                                    value={fbSettings.facebookVerifyToken}
+                                    onChange={(e) => setFbSettings({ ...fbSettings, facebookVerifyToken: e.target.value })}
+                                    className="w-full pl-10 p-3 border rounded-lg focus:ring-2 focus:ring-blue-500"
+                                    placeholder="dthstore_fb_token"
+                                />
+                            </div>
+                            <p className="text-xs text-gray-500 mt-1">Must match the token entered in Facebook.</p>
+                        </div>
+                        <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-1">Page Access Token</label>
+                            <div className="relative">
+                                <input
+                                    type="password"
+                                    value={fbSettings.facebookPageAccessToken}
+                                    onChange={(e) => setFbSettings({ ...fbSettings, facebookPageAccessToken: e.target.value })}
+                                    className="w-full p-3 border rounded-lg focus:ring-2 focus:ring-blue-500"
+                                    placeholder="EAAG..."
+                                />
+                            </div>
+                            <p className="text-xs text-gray-500 mt-1">Required to fetch Lead Name & Phone Number automatically.</p>
+                        </div>
+                    </div>
+
+                    <div className="flex justify-end pt-4 border-t border-gray-100">
+                        <button
+                            onClick={saveFbSettings}
+                            disabled={fbLoading || !config.whatsappApiUrl}
+                            className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 flex items-center font-medium"
+                        >
+                            {fbLoading ? <Loader2 size={18} className="mr-2 animate-spin" /> : <Save size={18} className="mr-2" />}
+                            Update Facebook Settings
+                        </button>
+                    </div>
+                </div>
             </div>
 
             {/* Email Section */}

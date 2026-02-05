@@ -1,0 +1,247 @@
+import { Lead, Product, User, MediaItem, SiteConfig, NotificationConfig } from '../types';
+import { INITIAL_LEADS, PRODUCTS as INITIAL_PRODUCTS, DEFAULT_SITE_CONFIG } from '../constants';
+
+const API_URL = '/api';
+
+// Fallback Keys
+const LEADS_KEY = 'dthstore_leads_v2';
+const PRODUCTS_KEY = 'dthstore_products_v1';
+const USER_SESSION_KEY = 'dthstore_user_session';
+const SITE_CONFIG_KEY = 'dthstore_site_config_v1';
+const NOTIFICATION_CONFIG_KEY = 'dthstore_notification_config_v1';
+
+// Default Notification Config
+const DEFAULT_NOTIFICATION_CONFIG: NotificationConfig = {
+    emailEnabled: false,
+    web3formsKey: '',
+    adminEmail: '',
+    telegramEnabled: false,
+    telegramBotToken: '',
+    telegramChatId: '',
+    whatsappEnabled: false,
+    whatsappApiUrl: '',
+    whatsappApiKey: '',
+    whatsappSessionId: 'DTHSTORE',
+    whatsappAdminNumber: '',
+    browserNotificationsEnabled: true
+};
+
+// Helpers for LocalStorage Fallback
+const getLocal = <T>(key: string, defaultVal: T): T => {
+    try {
+        const item = localStorage.getItem(key);
+        return item ? JSON.parse(item) : defaultVal;
+    } catch { return defaultVal; }
+};
+const setLocal = (key: string, val: any) => localStorage.setItem(key, JSON.stringify(val));
+
+// --- Auth Operations --- 
+const USERS: Record<string, User & { password: string }> = {
+    // Support both username and email-based login
+    'admin': { id: 'u1', username: 'admin', password: '123', name: 'Super Admin', role: 'ADMIN' },
+    'staff': { id: 'u2', username: 'staff', password: '123', name: 'Sales Executive', role: 'STAFF' },
+    // Email-based demo accounts
+    'admin@demo.com': { id: 'u1', username: 'admin@demo.com', password: '123', name: 'Super Admin', role: 'ADMIN' },
+    'staff@demo.com': { id: 'u2', username: 'staff@demo.com', password: '123', name: 'Sales Executive', role: 'STAFF' }
+};
+
+export const loginUser = (usernameOrEmail: string, password: string): User | null => {
+    // Try direct lookup first
+    let user = USERS[usernameOrEmail];
+
+    // If not found and looks like email, try extracting username
+    if (!user && usernameOrEmail.includes('@')) {
+        const usernameFromEmail = usernameOrEmail.split('@')[0];
+        user = USERS[usernameFromEmail];
+    }
+
+    if (user && user.password === password) {
+        const { password: _, ...safeUser } = user;
+        localStorage.setItem(USER_SESSION_KEY, JSON.stringify(safeUser));
+        return safeUser;
+    }
+    return null;
+};
+
+export const logoutUser = () => localStorage.removeItem(USER_SESSION_KEY);
+
+export const getCurrentUser = (): User | null => {
+    const stored = localStorage.getItem(USER_SESSION_KEY);
+    return stored ? JSON.parse(stored) : null;
+};
+
+// --- API Helpers ---
+async function apiCall<T>(p: Promise<Response>, fallback: () => T): Promise<T> {
+    try {
+        const res = await p;
+        if (!res.ok) throw new Error('API Error');
+        return await res.json();
+    } catch (e) {
+        console.warn("API Unreachable, using LocalStorage fallback", e);
+        return fallback();
+    }
+}
+
+// --- Leads Operations ---
+
+// Helper to get remote config
+const getRemote = () => {
+    const c = getNotificationConfig();
+    if (c.whatsappEnabled && c.whatsappApiUrl) {
+        return {
+            url: c.whatsappApiUrl.replace(/\/$/, ''), // Remove trailing slash
+            headers: {
+                'Content-Type': 'application/json',
+                ...(c.whatsappApiKey ? { 'x-api-key': c.whatsappApiKey } : {})
+            }
+        };
+    }
+    return null;
+}
+
+export const getLeads = async (): Promise<Lead[]> => {
+    const remote = getRemote();
+    if (remote) {
+        try {
+            const res = await fetch(`${remote.url}/leads`, { headers: remote.headers });
+            if (res.ok) {
+                const data = await res.json();
+                if (data.success && Array.isArray(data.leads)) return data.leads;
+            }
+        } catch (e) {
+            console.warn("Remote leads fetch failing, falling back to local", e);
+        }
+    }
+    // Fallback to local
+    return getLocal(LEADS_KEY, INITIAL_LEADS);
+};
+
+export const saveLead = async (lead: Lead): Promise<Lead> => {
+    const remote = getRemote();
+    if (remote) {
+        try {
+            const res = await fetch(`${remote.url}/leads`, {
+                method: 'POST',
+                headers: remote.headers,
+                body: JSON.stringify(lead)
+            });
+            if (res.ok) {
+                const data = await res.json();
+                if (data.success) return data.lead;
+            }
+        } catch (e) {
+            console.warn("Remote save failed, saving locally", e);
+        }
+    }
+
+    // Local save (Fallback)
+    const leads = getLocal<Lead[]>(LEADS_KEY, INITIAL_LEADS);
+    const newLeads = [lead, ...leads];
+    setLocal(LEADS_KEY, newLeads);
+    return lead;
+};
+
+export const updateLead = async (updatedLead: Lead): Promise<Lead[]> => {
+    const remote = getRemote();
+    if (remote) {
+        try {
+            const res = await fetch(`${remote.url}/leads/${updatedLead.id}`, {
+                method: 'PUT',
+                headers: remote.headers,
+                body: JSON.stringify(updatedLead)
+            });
+            if (res.ok) {
+                // If remote update success, fetch fresh list
+                return getLeads();
+            }
+        } catch (e) { console.warn("Remote update failed", e); }
+    }
+
+    // Local Logic
+    const leads = getLocal<Lead[]>(LEADS_KEY, INITIAL_LEADS);
+    const newLeads = leads.map(l => l.id === updatedLead.id ? updatedLead : l);
+    setLocal(LEADS_KEY, newLeads);
+    return newLeads;
+};
+
+export const deleteLead = async (leadId: string): Promise<Lead[]> => {
+    const remote = getRemote();
+    if (remote) {
+        try {
+            await fetch(`${remote.url}/leads/${leadId}`, {
+                method: 'DELETE',
+                headers: remote.headers
+            });
+            // Fetch fresh list
+            return getLeads();
+        } catch (e) { console.warn("Remote delete failed", e); }
+    }
+
+    // Local Logic
+    const leads = getLocal<Lead[]>(LEADS_KEY, INITIAL_LEADS);
+    const newLeads = leads.filter(l => l.id !== leadId);
+    setLocal(LEADS_KEY, newLeads);
+    return newLeads;
+};
+
+
+// --- Product Operations ---
+
+export const getProducts = (): Product[] => {
+    return getLocal(PRODUCTS_KEY, INITIAL_PRODUCTS as Product[]);
+};
+
+export const saveProduct = async (product: Product): Promise<Product[]> => {
+    return apiCall(
+        fetch(`${API_URL}/products`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(product) }),
+        () => {
+            const products = getLocal<Product[]>(PRODUCTS_KEY, INITIAL_PRODUCTS as Product[]);
+            const newProducts = [product, ...products];
+            setLocal(PRODUCTS_KEY, newProducts);
+            return newProducts;
+        }
+    );
+};
+
+export const deleteProduct = async (id: string): Promise<Product[]> => {
+    return apiCall(
+        fetch(`${API_URL}/products/${id}`, { method: 'DELETE' }),
+        () => {
+            const products = getLocal<Product[]>(PRODUCTS_KEY, INITIAL_PRODUCTS as Product[]);
+            const newProducts = products.filter(p => p.id !== id);
+            setLocal(PRODUCTS_KEY, newProducts);
+            return newProducts;
+        }
+    );
+};
+
+// --- Site Config operations ---
+export const getSiteConfig = async (): Promise<SiteConfig> => {
+    return apiCall(fetch(`${API_URL}/config`), () => getLocal(SITE_CONFIG_KEY, DEFAULT_SITE_CONFIG));
+}
+
+export const saveSiteConfig = async (config: SiteConfig): Promise<SiteConfig> => {
+    return apiCall(
+        fetch(`${API_URL}/config`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(config) }),
+        () => {
+            setLocal(SITE_CONFIG_KEY, config);
+            return config;
+        }
+    );
+}
+
+// --- Notification Config operations ---
+export const getNotificationConfig = (): NotificationConfig => {
+    return getLocal(NOTIFICATION_CONFIG_KEY, DEFAULT_NOTIFICATION_CONFIG);
+};
+
+export const saveNotificationConfig = (config: NotificationConfig): NotificationConfig => {
+    setLocal(NOTIFICATION_CONFIG_KEY, config);
+    return config;
+};
+
+// Keeping Media mostly local
+export const getMediaCatalog = (): MediaItem[] => [];
+export const saveMediaItem = (item: MediaItem) => [item];
+export const deleteMediaItem = (id: string) => [];
+
