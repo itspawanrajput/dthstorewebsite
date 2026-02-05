@@ -285,12 +285,14 @@ const LoginModal: React.FC<LoginModalProps> = ({ onClose, onLoginSuccess }) => {
                 </div>
             )}
 
-            {/* Demo credentials notice */}
-            <div className="text-center text-xs text-gray-400 mt-4 pt-4 border-t">
-                <p className="font-medium text-gray-500 mb-1">Demo Credentials</p>
-                <p>Admin: <code className="bg-gray-100 px-1 rounded">admin</code> / <code className="bg-gray-100 px-1 rounded">admin123</code></p>
-                <p>Staff: <code className="bg-gray-100 px-1 rounded">staff</code> / <code className="bg-gray-100 px-1 rounded">staff123</code></p>
-            </div>
+            {/* Demo credentials notice - only show if Firebase is NOT configured */}
+            {!firebaseReady && (
+                <div className="text-center text-xs text-gray-400 mt-4 pt-4 border-t">
+                    <p className="font-medium text-gray-500 mb-1">Demo Credentials</p>
+                    <p>Admin: <code className="bg-gray-100 px-1 rounded">admin</code> / <code className="bg-gray-100 px-1 rounded">admin123</code></p>
+                    <p>Staff: <code className="bg-gray-100 px-1 rounded">staff</code> / <code className="bg-gray-100 px-1 rounded">staff123</code></p>
+                </div>
+            )}
         </div>
     );
 
