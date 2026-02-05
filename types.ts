@@ -23,6 +23,13 @@ export enum Operator {
   OTHER = 'Other'
 }
 
+export interface LeadNote {
+  id: string;
+  text: string;
+  createdAt: number;
+  createdBy: string;
+}
+
 export interface Lead {
   id: string;
   name: string;
@@ -33,8 +40,9 @@ export interface Lead {
   status: LeadStatus;
   source: 'Website' | 'WhatsApp' | 'Manual';
   createdAt: number;
-  notes?: string;
-  orderId?: string; 
+  notes?: LeadNote[];
+  followUpDate?: number;
+  orderId?: string;
 }
 
 export interface SalesScriptResponse {
