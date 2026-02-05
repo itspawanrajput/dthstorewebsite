@@ -1,9 +1,10 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { NotificationConfig } from '../../types';
 import { getNotificationConfig, saveNotificationConfig } from '../../services/storageService';
 import {
     Bell, Mail, MessageCircle, Send, Save, CheckCircle, AlertCircle,
-    ExternalLink, Eye, EyeOff, Info, TestTube, Server, QrCode
+    ExternalLink, Eye, EyeOff, Info, TestTube, Server, RefreshCw,
+    Power, PowerOff, Smartphone, Loader2, QrCode
 } from 'lucide-react';
 
 const NotificationSettings: React.FC = () => {
@@ -26,12 +27,24 @@ const NotificationSettings: React.FC = () => {
     const [showTokens, setShowTokens] = useState<Record<string, boolean>>({});
     const [testing, setTesting] = useState<string | null>(null);
     const [testResult, setTestResult] = useState<{ channel: string; success: boolean; message: string } | null>(null);
-    const [whatsappStatus, setWhatsappStatus] = useState<'unknown' | 'connected' | 'disconnected' | 'checking'>('unknown');
+
+    // WhatsApp Session State
+    const [whatsappStatus, setWhatsappStatus] = useState<'unknown' | 'connected' | 'disconnected' | 'checking' | 'initializing'>('unknown');
+    const [qrCode, setQrCode] = useState<string | null>(null);
+    const [qrLoading, setQrLoading] = useState(false);
+    const [sessionAction, setSessionAction] = useState<string | null>(null);
 
     useEffect(() => {
         const savedConfig = getNotificationConfig();
         setConfig(savedConfig);
     }, []);
+
+    // Auto-check WhatsApp status when API URL changes
+    useEffect(() => {
+        if (config.whatsappApiUrl && config.whatsappEnabled) {
+            checkWhatsAppStatus();
+        }
+    }, [config.whatsappApiUrl, config.whatsappEnabled]);
 
     const handleSave = () => {
         saveNotificationConfig(config);
@@ -43,25 +56,111 @@ const NotificationSettings: React.FC = () => {
         setShowTokens(prev => ({ ...prev, [field]: !prev[field] }));
     };
 
+    const getApiHeaders = useCallback(() => {
+        const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+        if (config.whatsappApiKey) {
+            headers['x-api-key'] = config.whatsappApiKey;
+        }
+        return headers;
+    }, [config.whatsappApiKey]);
+
     const checkWhatsAppStatus = async () => {
         if (!config.whatsappApiUrl) return;
 
         setWhatsappStatus('checking');
         try {
-            const headers: Record<string, string> = {};
-            if (config.whatsappApiKey) {
-                headers['x-api-key'] = config.whatsappApiKey;
-            }
-
             const response = await fetch(
                 `${config.whatsappApiUrl}/session/status/${config.whatsappSessionId}`,
-                { headers }
+                { headers: getApiHeaders() }
             );
             const data = await response.json();
-            setWhatsappStatus(data.state === 'CONNECTED' ? 'connected' : 'disconnected');
-        } catch {
+
+            if (data.success && data.state === 'CONNECTED') {
+                setWhatsappStatus('connected');
+                setQrCode(null);
+            } else {
+                setWhatsappStatus('disconnected');
+            }
+        } catch (error) {
+            console.error('Status check failed:', error);
             setWhatsappStatus('disconnected');
         }
+    };
+
+    const startWhatsAppSession = async () => {
+        if (!config.whatsappApiUrl) return;
+
+        setSessionAction('starting');
+        setWhatsappStatus('initializing');
+
+        try {
+            const response = await fetch(
+                `${config.whatsappApiUrl}/session/start/${config.whatsappSessionId}`,
+                { method: 'GET', headers: getApiHeaders() }
+            );
+            const data = await response.json();
+
+            if (data.success) {
+                // Wait a moment then fetch QR code
+                setTimeout(() => fetchQRCode(), 2000);
+            } else {
+                setTestResult({ channel: 'whatsapp', success: false, message: data.message || 'Failed to start session' });
+            }
+        } catch (error: any) {
+            setTestResult({ channel: 'whatsapp', success: false, message: error.message });
+        }
+        setSessionAction(null);
+    };
+
+    const stopWhatsAppSession = async () => {
+        if (!config.whatsappApiUrl) return;
+
+        setSessionAction('stopping');
+        try {
+            const response = await fetch(
+                `${config.whatsappApiUrl}/session/terminate/${config.whatsappSessionId}`,
+                { method: 'GET', headers: getApiHeaders() }
+            );
+            const data = await response.json();
+
+            if (data.success) {
+                setWhatsappStatus('disconnected');
+                setQrCode(null);
+                setTestResult({ channel: 'whatsapp', success: true, message: 'Session terminated' });
+            }
+        } catch (error: any) {
+            setTestResult({ channel: 'whatsapp', success: false, message: error.message });
+        }
+        setSessionAction(null);
+    };
+
+    const fetchQRCode = async () => {
+        if (!config.whatsappApiUrl) return;
+
+        setQrLoading(true);
+        try {
+            // Get QR as base64
+            const response = await fetch(
+                `${config.whatsappApiUrl}/session/qr/${config.whatsappSessionId}`,
+                { headers: getApiHeaders() }
+            );
+            const data = await response.json();
+
+            if (data.success && data.qr) {
+                setQrCode(data.qr);
+                setWhatsappStatus('disconnected');
+            } else {
+                // Try image endpoint
+                const imgUrl = `${config.whatsappApiUrl}/session/qr/${config.whatsappSessionId}/image`;
+                setQrCode(imgUrl);
+            }
+        } catch (error) {
+            console.error('QR fetch failed:', error);
+            // Fallback to image URL
+            const imgUrl = `${config.whatsappApiUrl}/session/qr/${config.whatsappSessionId}/image`;
+            setQrCode(imgUrl);
+        }
+        setQrLoading(false);
     };
 
     const testNotification = async (channel: 'email' | 'telegram' | 'whatsapp') => {
@@ -107,18 +206,11 @@ const NotificationSettings: React.FC = () => {
                     message: data.ok ? 'Telegram message sent!' : data.description
                 });
             } else if (channel === 'whatsapp' && config.whatsappEnabled && config.whatsappApiUrl && config.whatsappAdminNumber) {
-                const headers: Record<string, string> = {
-                    'Content-Type': 'application/json'
-                };
-                if (config.whatsappApiKey) {
-                    headers['x-api-key'] = config.whatsappApiKey;
-                }
-
                 const response = await fetch(
                     `${config.whatsappApiUrl}/client/sendMessage/${config.whatsappSessionId}`,
                     {
                         method: 'POST',
-                        headers,
+                        headers: getApiHeaders(),
                         body: JSON.stringify({
                             chatId: `${config.whatsappAdminNumber}@c.us`,
                             message: '🔔 *Test Notification*\n\nYour WhatsApp integration is working!\n\n_From DTH Store CMS_'
@@ -173,11 +265,35 @@ const NotificationSettings: React.FC = () => {
         }
     };
 
+    const StatusBadge = ({ status }: { status: typeof whatsappStatus }) => {
+        const styles = {
+            connected: 'bg-green-100 text-green-800 border-green-200',
+            disconnected: 'bg-red-100 text-red-800 border-red-200',
+            checking: 'bg-yellow-100 text-yellow-800 border-yellow-200',
+            initializing: 'bg-blue-100 text-blue-800 border-blue-200',
+            unknown: 'bg-gray-100 text-gray-800 border-gray-200'
+        };
+
+        const labels = {
+            connected: '● Connected',
+            disconnected: '● Disconnected',
+            checking: '● Checking...',
+            initializing: '● Initializing...',
+            unknown: '● Unknown'
+        };
+
+        return (
+            <span className={`px-3 py-1 rounded-full text-xs font-medium border ${styles[status]}`}>
+                {labels[status]}
+            </span>
+        );
+    };
+
     return (
         <div className="max-w-4xl mx-auto space-y-6 animate-in fade-in">
             {/* Header */}
             <div className="bg-gradient-to-r from-blue-600 to-indigo-600 rounded-2xl p-6 text-white">
-                <div className="flex items-center justify-between">
+                <div className="flex items-center justify-between flex-wrap gap-4">
                     <div>
                         <h2 className="text-2xl font-bold flex items-center">
                             <Bell className="mr-3" size={28} /> Notification Settings
@@ -211,9 +327,220 @@ const NotificationSettings: React.FC = () => {
                     {testResult.success ? <CheckCircle size={20} className="mr-3" /> : <AlertCircle size={20} className="mr-3" />}
                     <span className="font-medium">{testResult.channel.toUpperCase()}:</span>
                     <span className="ml-2">{testResult.message}</span>
-                    <button onClick={() => setTestResult(null)} className="ml-auto text-gray-500 hover:text-gray-700">×</button>
+                    <button onClick={() => setTestResult(null)} className="ml-auto text-gray-500 hover:text-gray-700 text-xl">×</button>
                 </div>
             )}
+
+            {/* WhatsApp Section - Self-Hosted API with Full Management */}
+            <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+                <div className="p-6 border-b border-gray-100 bg-gradient-to-r from-green-50 to-emerald-50">
+                    <div className="flex items-center justify-between flex-wrap gap-4">
+                        <div className="flex items-center">
+                            <div className="w-14 h-14 bg-green-500 rounded-2xl flex items-center justify-center mr-4 shadow-lg">
+                                <MessageCircle className="text-white" size={28} />
+                            </div>
+                            <div>
+                                <h3 className="font-bold text-gray-900 text-lg">WhatsApp Business</h3>
+                                <p className="text-sm text-gray-500">Self-hosted WhatsApp API on AWS EC2</p>
+                            </div>
+                        </div>
+                        <div className="flex items-center gap-3">
+                            <StatusBadge status={whatsappStatus} />
+                            <label className="relative inline-flex items-center cursor-pointer">
+                                <input
+                                    type="checkbox"
+                                    checked={config.whatsappEnabled}
+                                    onChange={(e) => setConfig({ ...config, whatsappEnabled: e.target.checked })}
+                                    className="sr-only peer"
+                                />
+                                <div className="w-14 h-7 bg-gray-200 peer-focus:ring-4 peer-focus:ring-green-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-0.5 after:left-[4px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-6 after:w-6 after:transition-all peer-checked:bg-green-500"></div>
+                            </label>
+                        </div>
+                    </div>
+                </div>
+
+                {config.whatsappEnabled && (
+                    <div className="p-6 space-y-6">
+                        {/* Server Configuration */}
+                        <div className="bg-gray-50 rounded-xl p-5 space-y-4">
+                            <h4 className="font-semibold text-gray-700 flex items-center">
+                                <Server size={18} className="mr-2" /> Server Configuration
+                            </h4>
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-1">API Server URL</label>
+                                    <input
+                                        type="text"
+                                        value={config.whatsappApiUrl}
+                                        onChange={(e) => setConfig({ ...config, whatsappApiUrl: e.target.value })}
+                                        placeholder="http://ec2-13-221-113-50.compute-1.amazonaws.com:3000"
+                                        className="w-full p-3 border rounded-lg focus:ring-2 focus:ring-green-500"
+                                    />
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-1">API Key</label>
+                                    <div className="relative">
+                                        <input
+                                            type={showTokens.whatsapp ? 'text' : 'password'}
+                                            value={config.whatsappApiKey}
+                                            onChange={(e) => setConfig({ ...config, whatsappApiKey: e.target.value })}
+                                            placeholder="dthstore2024secure"
+                                            className="w-full p-3 pr-12 border rounded-lg focus:ring-2 focus:ring-green-500"
+                                        />
+                                        <button
+                                            onClick={() => toggleShowToken('whatsapp')}
+                                            className="absolute right-3 top-3 text-gray-400 hover:text-gray-600"
+                                        >
+                                            {showTokens.whatsapp ? <EyeOff size={20} /> : <Eye size={20} />}
+                                        </button>
+                                    </div>
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-1">Session ID</label>
+                                    <input
+                                        type="text"
+                                        value={config.whatsappSessionId}
+                                        onChange={(e) => setConfig({ ...config, whatsappSessionId: e.target.value })}
+                                        placeholder="DTHSTORE"
+                                        className="w-full p-3 border rounded-lg focus:ring-2 focus:ring-green-500"
+                                    />
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-1">Admin WhatsApp Number</label>
+                                    <input
+                                        type="text"
+                                        value={config.whatsappAdminNumber}
+                                        onChange={(e) => setConfig({ ...config, whatsappAdminNumber: e.target.value })}
+                                        placeholder="919311252564"
+                                        className="w-full p-3 border rounded-lg focus:ring-2 focus:ring-green-500"
+                                    />
+                                    <p className="text-xs text-gray-500 mt-1">Include country code (91 for India)</p>
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Session Management */}
+                        <div className="bg-gradient-to-r from-green-50 to-emerald-50 rounded-xl p-5 space-y-4">
+                            <h4 className="font-semibold text-gray-700 flex items-center">
+                                <Smartphone size={18} className="mr-2" /> Session Management
+                            </h4>
+
+                            <div className="flex flex-wrap gap-3">
+                                <button
+                                    onClick={checkWhatsAppStatus}
+                                    disabled={!config.whatsappApiUrl || whatsappStatus === 'checking'}
+                                    className="px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 disabled:opacity-50 flex items-center"
+                                >
+                                    {whatsappStatus === 'checking' ? (
+                                        <Loader2 size={16} className="mr-2 animate-spin" />
+                                    ) : (
+                                        <RefreshCw size={16} className="mr-2" />
+                                    )}
+                                    Check Status
+                                </button>
+
+                                <button
+                                    onClick={startWhatsAppSession}
+                                    disabled={!config.whatsappApiUrl || sessionAction === 'starting'}
+                                    className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50 flex items-center"
+                                >
+                                    {sessionAction === 'starting' ? (
+                                        <Loader2 size={16} className="mr-2 animate-spin" />
+                                    ) : (
+                                        <Power size={16} className="mr-2" />
+                                    )}
+                                    Start Session
+                                </button>
+
+                                <button
+                                    onClick={stopWhatsAppSession}
+                                    disabled={!config.whatsappApiUrl || sessionAction === 'stopping'}
+                                    className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-50 flex items-center"
+                                >
+                                    {sessionAction === 'stopping' ? (
+                                        <Loader2 size={16} className="mr-2 animate-spin" />
+                                    ) : (
+                                        <PowerOff size={16} className="mr-2" />
+                                    )}
+                                    Stop Session
+                                </button>
+
+                                <button
+                                    onClick={fetchQRCode}
+                                    disabled={!config.whatsappApiUrl || qrLoading}
+                                    className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 disabled:opacity-50 flex items-center"
+                                >
+                                    {qrLoading ? (
+                                        <Loader2 size={16} className="mr-2 animate-spin" />
+                                    ) : (
+                                        <QrCode size={16} className="mr-2" />
+                                    )}
+                                    Get QR Code
+                                </button>
+                            </div>
+
+                            {/* QR Code Display */}
+                            {qrCode && whatsappStatus !== 'connected' && (
+                                <div className="mt-4 p-6 bg-white rounded-xl border-2 border-dashed border-green-300 text-center">
+                                    <h5 className="font-semibold text-gray-700 mb-4">Scan QR Code with WhatsApp</h5>
+                                    <div className="inline-block bg-white p-4 rounded-lg shadow-lg">
+                                        {qrCode.startsWith('http') ? (
+                                            <img
+                                                src={`${qrCode}?t=${Date.now()}`}
+                                                alt="WhatsApp QR Code"
+                                                className="w-64 h-64 object-contain"
+                                                onError={(e) => {
+                                                    (e.target as HTMLImageElement).style.display = 'none';
+                                                }}
+                                            />
+                                        ) : (
+                                            <img
+                                                src={`https://api.qrserver.com/v1/create-qr-code/?size=256x256&data=${encodeURIComponent(qrCode)}`}
+                                                alt="WhatsApp QR Code"
+                                                className="w-64 h-64"
+                                            />
+                                        )}
+                                    </div>
+                                    <div className="mt-4 text-sm text-gray-600">
+                                        <p>1. Open WhatsApp on your phone</p>
+                                        <p>2. Go to Settings → Linked Devices</p>
+                                        <p>3. Tap "Link a Device" and scan this QR code</p>
+                                    </div>
+                                    <button
+                                        onClick={fetchQRCode}
+                                        className="mt-4 text-green-600 hover:text-green-800 text-sm font-medium flex items-center justify-center mx-auto"
+                                    >
+                                        <RefreshCw size={14} className="mr-1" /> Refresh QR Code
+                                    </button>
+                                </div>
+                            )}
+
+                            {/* Connected State */}
+                            {whatsappStatus === 'connected' && (
+                                <div className="mt-4 p-6 bg-green-50 rounded-xl border border-green-200 text-center">
+                                    <div className="w-16 h-16 bg-green-500 rounded-full flex items-center justify-center mx-auto mb-4">
+                                        <CheckCircle className="text-white" size={32} />
+                                    </div>
+                                    <h5 className="font-semibold text-green-800 text-lg">WhatsApp Connected!</h5>
+                                    <p className="text-green-600 mt-2">Your WhatsApp session is active and ready to send notifications.</p>
+                                </div>
+                            )}
+                        </div>
+
+                        {/* Test Message */}
+                        <div className="flex justify-end">
+                            <button
+                                onClick={() => testNotification('whatsapp')}
+                                disabled={testing === 'whatsapp' || !config.whatsappApiUrl || !config.whatsappAdminNumber || whatsappStatus !== 'connected'}
+                                className="px-6 py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50 flex items-center font-medium"
+                            >
+                                <TestTube size={18} className="mr-2" />
+                                {testing === 'whatsapp' ? 'Sending...' : 'Send Test Message'}
+                            </button>
+                        </div>
+                    </div>
+                )}
+            </div>
 
             {/* Email Section */}
             <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
@@ -253,33 +580,35 @@ const NotificationSettings: React.FC = () => {
                                 </ol>
                             </div>
                         </div>
-                        <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-1">Web3Forms Access Key</label>
-                            <div className="relative">
-                                <input
-                                    type={showTokens.web3forms ? 'text' : 'password'}
-                                    value={config.web3formsKey}
-                                    onChange={(e) => setConfig({ ...config, web3formsKey: e.target.value })}
-                                    placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
-                                    className="w-full p-3 pr-12 border rounded-lg focus:ring-2 focus:ring-blue-500"
-                                />
-                                <button
-                                    onClick={() => toggleShowToken('web3forms')}
-                                    className="absolute right-3 top-3 text-gray-400 hover:text-gray-600"
-                                >
-                                    {showTokens.web3forms ? <EyeOff size={20} /> : <Eye size={20} />}
-                                </button>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-1">Web3Forms Access Key</label>
+                                <div className="relative">
+                                    <input
+                                        type={showTokens.web3forms ? 'text' : 'password'}
+                                        value={config.web3formsKey}
+                                        onChange={(e) => setConfig({ ...config, web3formsKey: e.target.value })}
+                                        placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
+                                        className="w-full p-3 pr-12 border rounded-lg focus:ring-2 focus:ring-blue-500"
+                                    />
+                                    <button
+                                        onClick={() => toggleShowToken('web3forms')}
+                                        className="absolute right-3 top-3 text-gray-400 hover:text-gray-600"
+                                    >
+                                        {showTokens.web3forms ? <EyeOff size={20} /> : <Eye size={20} />}
+                                    </button>
+                                </div>
                             </div>
-                        </div>
-                        <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-1">Your Email Address</label>
-                            <input
-                                type="email"
-                                value={config.adminEmail}
-                                onChange={(e) => setConfig({ ...config, adminEmail: e.target.value })}
-                                placeholder="your@email.com"
-                                className="w-full p-3 border rounded-lg focus:ring-2 focus:ring-blue-500"
-                            />
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-1">Your Email Address</label>
+                                <input
+                                    type="email"
+                                    value={config.adminEmail}
+                                    onChange={(e) => setConfig({ ...config, adminEmail: e.target.value })}
+                                    placeholder="your@email.com"
+                                    className="w-full p-3 border rounded-lg focus:ring-2 focus:ring-blue-500"
+                                />
+                            </div>
                         </div>
                         <button
                             onClick={() => testNotification('email')}
@@ -328,38 +657,39 @@ const NotificationSettings: React.FC = () => {
                                     <li>Message <a href="https://t.me/BotFather" target="_blank" className="underline">@BotFather</a> on Telegram</li>
                                     <li>Send /newbot and follow instructions</li>
                                     <li>Copy the Bot Token</li>
-                                    <li>Message your bot, then visit: api.telegram.org/bot&lt;TOKEN&gt;/getUpdates</li>
-                                    <li>Find your Chat ID in the response</li>
+                                    <li>Message your bot, then visit API to get Chat ID</li>
                                 </ol>
                             </div>
                         </div>
-                        <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-1">Bot Token</label>
-                            <div className="relative">
-                                <input
-                                    type={showTokens.telegram ? 'text' : 'password'}
-                                    value={config.telegramBotToken}
-                                    onChange={(e) => setConfig({ ...config, telegramBotToken: e.target.value })}
-                                    placeholder="123456789:ABCdefGHIjklMNOpqrsTUVwxyz"
-                                    className="w-full p-3 pr-12 border rounded-lg focus:ring-2 focus:ring-sky-500"
-                                />
-                                <button
-                                    onClick={() => toggleShowToken('telegram')}
-                                    className="absolute right-3 top-3 text-gray-400 hover:text-gray-600"
-                                >
-                                    {showTokens.telegram ? <EyeOff size={20} /> : <Eye size={20} />}
-                                </button>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-1">Bot Token</label>
+                                <div className="relative">
+                                    <input
+                                        type={showTokens.telegram ? 'text' : 'password'}
+                                        value={config.telegramBotToken}
+                                        onChange={(e) => setConfig({ ...config, telegramBotToken: e.target.value })}
+                                        placeholder="123456789:ABCdefGHIjklMNOpqrsTUVwxyz"
+                                        className="w-full p-3 pr-12 border rounded-lg focus:ring-2 focus:ring-sky-500"
+                                    />
+                                    <button
+                                        onClick={() => toggleShowToken('telegram')}
+                                        className="absolute right-3 top-3 text-gray-400 hover:text-gray-600"
+                                    >
+                                        {showTokens.telegram ? <EyeOff size={20} /> : <Eye size={20} />}
+                                    </button>
+                                </div>
                             </div>
-                        </div>
-                        <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-1">Chat ID</label>
-                            <input
-                                type="text"
-                                value={config.telegramChatId}
-                                onChange={(e) => setConfig({ ...config, telegramChatId: e.target.value })}
-                                placeholder="123456789"
-                                className="w-full p-3 border rounded-lg focus:ring-2 focus:ring-sky-500"
-                            />
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-1">Chat ID</label>
+                                <input
+                                    type="text"
+                                    value={config.telegramChatId}
+                                    onChange={(e) => setConfig({ ...config, telegramChatId: e.target.value })}
+                                    placeholder="123456789"
+                                    className="w-full p-3 border rounded-lg focus:ring-2 focus:ring-sky-500"
+                                />
+                            </div>
                         </div>
                         <button
                             onClick={() => testNotification('telegram')}
@@ -369,145 +699,6 @@ const NotificationSettings: React.FC = () => {
                             <TestTube size={16} className="mr-2" />
                             {testing === 'telegram' ? 'Sending...' : 'Test Telegram'}
                         </button>
-                    </div>
-                )}
-            </div>
-
-            {/* WhatsApp Section - Self-Hosted API */}
-            <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
-                <div className="p-6 border-b border-gray-100">
-                    <div className="flex items-center justify-between">
-                        <div className="flex items-center">
-                            <div className="w-12 h-12 bg-green-100 rounded-xl flex items-center justify-center mr-4">
-                                <MessageCircle className="text-green-600" size={24} />
-                            </div>
-                            <div>
-                                <h3 className="font-bold text-gray-900">WhatsApp Notifications</h3>
-                                <p className="text-sm text-gray-500">Self-hosted WhatsApp API (whatsapp-web.js)</p>
-                            </div>
-                        </div>
-                        <div className="flex items-center space-x-3">
-                            {whatsappStatus !== 'unknown' && (
-                                <span className={`px-3 py-1 rounded-full text-xs font-medium ${whatsappStatus === 'connected' ? 'bg-green-100 text-green-800' :
-                                        whatsappStatus === 'checking' ? 'bg-yellow-100 text-yellow-800' :
-                                            'bg-red-100 text-red-800'
-                                    }`}>
-                                    {whatsappStatus === 'connected' ? '● Connected' :
-                                        whatsappStatus === 'checking' ? '● Checking...' :
-                                            '● Disconnected'}
-                                </span>
-                            )}
-                            <label className="relative inline-flex items-center cursor-pointer">
-                                <input
-                                    type="checkbox"
-                                    checked={config.whatsappEnabled}
-                                    onChange={(e) => setConfig({ ...config, whatsappEnabled: e.target.checked })}
-                                    className="sr-only peer"
-                                />
-                                <div className="w-14 h-7 bg-gray-200 peer-focus:ring-4 peer-focus:ring-green-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-0.5 after:left-[4px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-6 after:w-6 after:transition-all peer-checked:bg-green-500"></div>
-                            </label>
-                        </div>
-                    </div>
-                </div>
-
-                {config.whatsappEnabled && (
-                    <div className="p-6 bg-gray-50 space-y-4">
-                        <div className="bg-green-50 border border-green-200 rounded-lg p-4 flex items-start">
-                            <Server size={20} className="text-green-600 mr-3 mt-0.5 flex-shrink-0" />
-                            <div className="text-sm text-green-800">
-                                <p className="font-medium">Self-hosted WhatsApp API:</p>
-                                <p className="mt-1">Your WhatsApp API is running on AWS EC2. Enter the server details below.</p>
-                                <a
-                                    href={config.whatsappApiUrl ? `${config.whatsappApiUrl}/api-docs` : '#'}
-                                    target="_blank"
-                                    className="inline-flex items-center mt-2 underline"
-                                >
-                                    View API Documentation <ExternalLink size={14} className="ml-1" />
-                                </a>
-                            </div>
-                        </div>
-
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                            <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-1">API Server URL</label>
-                                <input
-                                    type="text"
-                                    value={config.whatsappApiUrl}
-                                    onChange={(e) => setConfig({ ...config, whatsappApiUrl: e.target.value })}
-                                    placeholder="http://ec2-xx-xx-xx-xx.compute-1.amazonaws.com:3000"
-                                    className="w-full p-3 border rounded-lg focus:ring-2 focus:ring-green-500"
-                                />
-                            </div>
-                            <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-1">API Key (optional)</label>
-                                <div className="relative">
-                                    <input
-                                        type={showTokens.whatsapp ? 'text' : 'password'}
-                                        value={config.whatsappApiKey}
-                                        onChange={(e) => setConfig({ ...config, whatsappApiKey: e.target.value })}
-                                        placeholder="Your API key"
-                                        className="w-full p-3 pr-12 border rounded-lg focus:ring-2 focus:ring-green-500"
-                                    />
-                                    <button
-                                        onClick={() => toggleShowToken('whatsapp')}
-                                        className="absolute right-3 top-3 text-gray-400 hover:text-gray-600"
-                                    >
-                                        {showTokens.whatsapp ? <EyeOff size={20} /> : <Eye size={20} />}
-                                    </button>
-                                </div>
-                            </div>
-                        </div>
-
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                            <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-1">Session ID</label>
-                                <input
-                                    type="text"
-                                    value={config.whatsappSessionId}
-                                    onChange={(e) => setConfig({ ...config, whatsappSessionId: e.target.value })}
-                                    placeholder="DTHSTORE"
-                                    className="w-full p-3 border rounded-lg focus:ring-2 focus:ring-green-500"
-                                />
-                            </div>
-                            <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-1">Your WhatsApp Number</label>
-                                <input
-                                    type="text"
-                                    value={config.whatsappAdminNumber}
-                                    onChange={(e) => setConfig({ ...config, whatsappAdminNumber: e.target.value })}
-                                    placeholder="919311252564"
-                                    className="w-full p-3 border rounded-lg focus:ring-2 focus:ring-green-500"
-                                />
-                                <p className="text-xs text-gray-500 mt-1">Include country code without + (e.g., 91 for India)</p>
-                            </div>
-                        </div>
-
-                        <div className="flex flex-wrap gap-3">
-                            <button
-                                onClick={checkWhatsAppStatus}
-                                disabled={!config.whatsappApiUrl}
-                                className="px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 disabled:opacity-50 flex items-center"
-                            >
-                                <Server size={16} className="mr-2" />
-                                Check Status
-                            </button>
-                            <a
-                                href={config.whatsappApiUrl ? `${config.whatsappApiUrl}/session/qr/${config.whatsappSessionId}/image` : '#'}
-                                target="_blank"
-                                className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 flex items-center"
-                            >
-                                <QrCode size={16} className="mr-2" />
-                                View QR Code
-                            </a>
-                            <button
-                                onClick={() => testNotification('whatsapp')}
-                                disabled={testing === 'whatsapp' || !config.whatsappApiUrl || !config.whatsappAdminNumber}
-                                className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50 flex items-center"
-                            >
-                                <TestTube size={16} className="mr-2" />
-                                {testing === 'whatsapp' ? 'Sending...' : 'Test WhatsApp'}
-                            </button>
-                        </div>
                     </div>
                 )}
             </div>
@@ -545,6 +736,19 @@ const NotificationSettings: React.FC = () => {
                     </div>
                 </div>
             </div>
+
+            {/* API Documentation Link */}
+            {config.whatsappApiUrl && (
+                <div className="text-center text-sm text-gray-500">
+                    <a
+                        href={`${config.whatsappApiUrl}/api-docs`}
+                        target="_blank"
+                        className="inline-flex items-center hover:text-blue-600"
+                    >
+                        <ExternalLink size={14} className="mr-1" /> View WhatsApp API Documentation
+                    </a>
+                </div>
+            )}
         </div>
     );
 };
