@@ -1,4 +1,4 @@
-import { Lead, Product, User, MediaItem, SiteConfig } from '../types';
+import { Lead, Product, User, MediaItem, SiteConfig, NotificationConfig } from '../types';
 import { INITIAL_LEADS, PRODUCTS as INITIAL_PRODUCTS, DEFAULT_SITE_CONFIG } from '../constants';
 
 const API_URL = '/api';
@@ -8,6 +8,21 @@ const LEADS_KEY = 'dthstore_leads_v2';
 const PRODUCTS_KEY = 'dthstore_products_v1';
 const USER_SESSION_KEY = 'dthstore_user_session';
 const SITE_CONFIG_KEY = 'dthstore_site_config_v1';
+const NOTIFICATION_CONFIG_KEY = 'dthstore_notification_config_v1';
+
+// Default Notification Config
+const DEFAULT_NOTIFICATION_CONFIG: NotificationConfig = {
+    emailEnabled: false,
+    web3formsKey: '',
+    adminEmail: '',
+    telegramEnabled: false,
+    telegramBotToken: '',
+    telegramChatId: '',
+    whatsappEnabled: false,
+    whatsappNumber: '',
+    whatsappApiKey: '',
+    browserNotificationsEnabled: true
+};
 
 // Helpers for LocalStorage Fallback
 const getLocal = <T>(key: string, defaultVal: T): T => {
@@ -138,7 +153,7 @@ export const deleteProduct = async (id: string): Promise<Product[]> => {
     );
 };
 
-// --- Config operations ---
+// --- Site Config operations ---
 export const getSiteConfig = async (): Promise<SiteConfig> => {
     return apiCall(fetch(`${API_URL}/config`), () => getLocal(SITE_CONFIG_KEY, DEFAULT_SITE_CONFIG));
 }
@@ -153,7 +168,18 @@ export const saveSiteConfig = async (config: SiteConfig): Promise<SiteConfig> =>
     );
 }
 
+// --- Notification Config operations ---
+export const getNotificationConfig = (): NotificationConfig => {
+    return getLocal(NOTIFICATION_CONFIG_KEY, DEFAULT_NOTIFICATION_CONFIG);
+};
+
+export const saveNotificationConfig = (config: NotificationConfig): NotificationConfig => {
+    setLocal(NOTIFICATION_CONFIG_KEY, config);
+    return config;
+};
+
 // Keeping Media mostly local
 export const getMediaCatalog = (): MediaItem[] => [];
 export const saveMediaItem = (item: MediaItem) => [item];
 export const deleteMediaItem = (id: string) => [];
+

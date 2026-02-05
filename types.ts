@@ -108,3 +108,25 @@ export interface SiteConfig {
     sideImage: string;
   };
 }
+
+// --- Notification Configuration ---
+
+export interface NotificationConfig {
+  // Email (Web3Forms)
+  emailEnabled: boolean;
+  web3formsKey: string;
+  adminEmail: string;
+
+  // Telegram
+  telegramEnabled: boolean;
+  telegramBotToken: string;
+  telegramChatId: string;
+
+  // WhatsApp (CallMeBot)
+  whatsappEnabled: boolean;
+  whatsappNumber: string;
+  whatsappApiKey: string;
+
+  // Browser notifications
+  browserNotificationsEnabled: boolean;
+}

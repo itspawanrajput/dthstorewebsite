@@ -1,16 +1,17 @@
 import React, { useState } from 'react';
 import { User } from '../types';
-import { Users, ShoppingBag, Settings } from 'lucide-react';
+import { Users, ShoppingBag, Settings, Bell } from 'lucide-react';
 import LeadsManager from './admin/LeadsManager';
 import ProductManager from './admin/ProductManager';
 import SiteSettings from './admin/SiteSettings';
+import NotificationSettings from './admin/NotificationSettings';
 
 interface AdminDashboardProps {
     user: User;
 }
 
 const AdminDashboard: React.FC<AdminDashboardProps> = ({ user }) => {
-    const [activeTab, setActiveTab] = useState<'leads' | 'products' | 'settings'>('leads');
+    const [activeTab, setActiveTab] = useState<'leads' | 'products' | 'settings' | 'notifications'>('leads');
 
     return (
         <div className="min-h-screen bg-gray-100 pb-10">
@@ -28,12 +29,12 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ user }) => {
                     </div>
 
                     {/* Tabs */}
-                    <div className="flex space-x-2 bg-gray-100 p-1 rounded-lg">
+                    <div className="flex flex-wrap gap-2 bg-gray-100 p-1 rounded-lg">
                         <button
                             onClick={() => setActiveTab('leads')}
                             className={`px-4 py-2 rounded-md text-sm font-medium transition ${activeTab === 'leads' ? 'bg-white text-blue-600 shadow-sm' : 'text-gray-500 hover:text-gray-900'}`}
                         >
-                            <div className="flex items-center"><Users size={16} className="mr-2" /> Leads Management</div>
+                            <div className="flex items-center"><Users size={16} className="mr-2" /> Leads</div>
                         </button>
                         {user.role === 'ADMIN' && (
                             <>
@@ -41,13 +42,19 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ user }) => {
                                     onClick={() => setActiveTab('products')}
                                     className={`px-4 py-2 rounded-md text-sm font-medium transition ${activeTab === 'products' ? 'bg-white text-blue-600 shadow-sm' : 'text-gray-500 hover:text-gray-900'}`}
                                 >
-                                    <div className="flex items-center"><ShoppingBag size={16} className="mr-2" /> Product Manager</div>
+                                    <div className="flex items-center"><ShoppingBag size={16} className="mr-2" /> Products</div>
+                                </button>
+                                <button
+                                    onClick={() => setActiveTab('notifications')}
+                                    className={`px-4 py-2 rounded-md text-sm font-medium transition ${activeTab === 'notifications' ? 'bg-white text-orange-600 shadow-sm' : 'text-gray-500 hover:text-gray-900'}`}
+                                >
+                                    <div className="flex items-center"><Bell size={16} className="mr-2" /> Notifications</div>
                                 </button>
                                 <button
                                     onClick={() => setActiveTab('settings')}
                                     className={`px-4 py-2 rounded-md text-sm font-medium transition ${activeTab === 'settings' ? 'bg-white text-blue-600 shadow-sm' : 'text-gray-500 hover:text-gray-900'}`}
                                 >
-                                    <div className="flex items-center"><Settings size={16} className="mr-2" /> Site Settings</div>
+                                    <div className="flex items-center"><Settings size={16} className="mr-2" /> Settings</div>
                                 </button>
                             </>
                         )}
@@ -65,6 +72,11 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ user }) => {
                 {/* PRODUCTS TAB */}
                 {activeTab === 'products' && user.role === 'ADMIN' && (
                     <ProductManager user={user} />
+                )}
+
+                {/* NOTIFICATIONS TAB */}
+                {activeTab === 'notifications' && user.role === 'ADMIN' && (
+                    <NotificationSettings />
                 )}
 
                 {/* SETTINGS TAB (CMS) */}
