@@ -74,10 +74,10 @@ const Navbar: React.FC<NavbarProps> = ({ user, config, onLoginClick, onLogoutCli
                             <div className="flex items-center space-x-4 ml-4 pl-4 border-l border-gray-200">
                                 <span className="text-sm font-semibold text-gray-700">{user.name}</span>
                                 <button
-                                    onClick={() => handleNavigation('admin')}
+                                    onClick={() => handleNavigation(user.role === 'ADMIN' ? 'admin' : 'account')}
                                     className="bg-gray-100 hover:bg-gray-200 text-gray-700 px-4 py-2 rounded-full text-sm font-medium transition"
                                 >
-                                    Dashboard
+                                    {user.role === 'ADMIN' ? 'Dashboard' : 'My Account'}
                                 </button>
                                 <button onClick={onLogoutClick} className="text-red-500 hover:text-red-700" title="Logout">
                                     <LogOut size={20} />
@@ -89,7 +89,7 @@ const Navbar: React.FC<NavbarProps> = ({ user, config, onLoginClick, onLogoutCli
                                     onClick={onLoginClick}
                                     className="flex items-center text-gray-600 hover:text-blue-600 font-medium transition"
                                 >
-                                    <LogIn size={18} className="mr-2" /> Staff
+                                    <LogIn size={18} className="mr-2" /> Login
                                 </button>
                                 <a href="tel:+919311252564" className="flex items-center bg-blue-600 text-white px-4 py-2 rounded-full hover:bg-blue-700 transition shadow-sm">
                                     <Phone size={16} className="mr-2" /> Call Now
@@ -121,7 +121,12 @@ const Navbar: React.FC<NavbarProps> = ({ user, config, onLoginClick, onLogoutCli
 
                     {user ? (
                         <>
-                            <button onClick={() => handleNavigation('admin')} className="block w-full text-left px-4 py-3 text-blue-600 font-medium hover:bg-gray-50">Admin Dashboard</button>
+                            <button
+                                onClick={() => handleNavigation(user.role === 'ADMIN' ? 'admin' : 'account')}
+                                className="block w-full text-left px-4 py-3 text-blue-600 font-medium hover:bg-gray-50"
+                            >
+                                {user.role === 'ADMIN' ? 'Admin Dashboard' : 'My Account'}
+                            </button>
                             <button onClick={onLogoutClick} className="block w-full text-left px-4 py-3 text-red-600 font-medium hover:bg-gray-50">Logout ({user.username})</button>
                         </>
                     ) : (
@@ -129,7 +134,7 @@ const Navbar: React.FC<NavbarProps> = ({ user, config, onLoginClick, onLogoutCli
                             onClick={() => { setIsOpen(false); onLoginClick(); }}
                             className="block w-full text-left px-4 py-3 text-blue-600 font-bold hover:bg-gray-50"
                         >
-                            Staff Login
+                            Login / Sign Up
                         </button>
                     )}
                 </div>
